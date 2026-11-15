@@ -61,7 +61,8 @@ audio{width:100%;margin-top:10px}
 <div class="wave"><canvas id="cv"></canvas></div>
 <div class="fxr" id="trimbox" hidden style="border-top:0;padding-top:8px"><label class="t">Trim the recording (gray parts get cut)</label>
     <div class="ctl"><span>Start</span><input type="range" id="ts" min="0" max="1000" value="0"><span>End</span><input type="range" id="te" min="0" max="1000" value="1000"></div>
-    <div class="ctl" style="display:block" id="tinfo"></div></div>
+    <div class="ctl" style="display:block" id="tinfo"></div>
+    <label class="ctl" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="trim" style="width:18px;height:18px;accent-color:var(--acc)"> Auto-remove silence at both ends</label></div>
 <div class="msg" id="msg" role="status">Page loaded. Tap Rec to start.</div>
 <div class="row">
   <span class="time" id="tm">0:00</span>
@@ -72,8 +73,6 @@ audio{width:100%;margin-top:10px}
 
 <div class="sec">Clean up the sound</div>
 <div class="fx">
-  <div class="fxr acc"><label class="t"><input type="checkbox" id="trim"> Auto-remove silence at both ends</label>
-    <div class="body"><div><div class="ctl"><span>Sensitivity</span><input type="range" id="thr" min="-55" max="-20" value="-42"></div></div></div></div>
   <div class="fxr acc"><label class="t"><input type="checkbox" id="lc"> Low cut (wind and rumble)</label>
     <div class="body"><div><div class="ctl"><span>Amount</span><input type="range" id="lcf" min="40" max="400" value="120"></div></div></div></div>
   <div class="fxr acc"><label class="t"><input type="checkbox" id="comp"> Tame harsh notes</label>
@@ -148,7 +147,7 @@ function drawLive(pk){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.
 
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
-  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();setPrev(false);let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
+  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;saved=[0,1000];if($('trim').checked)autoTrim();else updTrim();setPrev(false);let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
   msg(cl>20?'Got it. Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the flute helps. “Tame harsh notes” can soften it but can’t fully repair it.':'Got it. Trim the ends if you want, choose effects, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
@@ -169,9 +168,15 @@ async function startRec(){AC();
 $('rec').onclick=()=>{stopPlay();rec&&rec.state==='recording'?rec.stop():startRec()};
 $('file').onchange=async e=>{const f=e.target.files[0];if(f){msg('Reading '+f.name+'…');AC();await load(await f.arrayBuffer())}};
 
-function trim(d,sr,db){const thr=Math.pow(10,db/20),B=512;let a=-1,z=-1;
+function bounds(d,sr){const thr=Math.pow(10,-42/20),B=512;let a=-1,z=-1;
   for(let i=0;i<d.length;i+=B){let m=0;for(let j=i;j<Math.min(d.length,i+B);j++)m=Math.max(m,Math.abs(d[j]));if(m>thr){if(a<0)a=i;z=i+B}}
-  if(a<0)return{d,off:0};const pad=Math.floor(sr*.05),s=Math.max(0,a-pad);return{d:d.slice(s,Math.min(d.length,z+pad)),off:s}}
+  if(a<0)return null;const pad=Math.floor(sr*.05);return[Math.max(0,a-pad),Math.min(d.length,z+pad)]}
+let saved=[0,1000];
+function autoTrim(){if(!raw)return;const n=raw.data.length;
+  if($('trim').checked){saved=[+$('ts').value,+$('te').value];const b=bounds(raw.data,raw.sr);
+    if(b){$('ts').value=Math.floor(b[0]/n*1000);$('te').value=Math.ceil(b[1]/n*1000)}}
+  else{$('ts').value=saved[0];$('te').value=saved[1]}
+  updTrim()}
 
 function pitch(d,r,sr){const W=Math.floor(sr*.09),H=W>>1,o=new Float32Array(d.length);
   for(let s=-H;s<d.length;s+=H){for(let i=0;i<W;i++){const oi=s+i;if(oi<0||oi>=d.length)continue;
@@ -183,7 +188,6 @@ function ir(c,secs,sr){const n=Math.floor(secs*sr),b=c.createBuffer(1,n,sr),x=b.
   for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*Math.pow(1-i/n,3);return b}
 
 async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000);let d=raw.data.slice(s0,Math.floor(n*$('te').value/1000)),off=s0;const sr=raw.sr;
-  if($('trim').checked){const t=trim(d,sr,+$('thr').value);d=t.d;off+=t.off}
   if($('octon').checked){const sh=pitch(d,$('oct').value==='up'?2:.5,sr),m=+$('octmix').value/100,y=new Float32Array(d.length);
     for(let i=0;i<d.length;i++)y[i]=d[i]*(1-.35*m)+sh[i]*m;d=y}
   if($('rep').checked){const n=+$('reps').value,gap=Math.floor(sr*.2),L=d.length+gap,y=new Float32Array(L*n-gap);
@@ -245,7 +249,7 @@ function updTrim(){if(!raw)return;let a=+$('ts').value,b=+$('te').value;
   draw(raw.data);const c=$('cv'),g=c.getContext('2d'),w=c.clientWidth,h=c.clientHeight;
   g.fillStyle='rgba(120,120,120,.6)';g.fillRect(0,0,w*a/1000,h);g.fillRect(w*b/1000,0,w-w*b/1000,h);
   const du=raw.data.length/raw.sr;$('tinfo').textContent='Keeping '+(du*a/1000).toFixed(1)+'s to '+(du*b/1000).toFixed(1)+'s of '+du.toFixed(1)+'s';touch()}
-$('ts').addEventListener('input',updTrim);$('te').addEventListener('input',updTrim);
+$('trim').addEventListener('change',autoTrim);$('ts').addEventListener('input',updTrim);$('te').addEventListener('input',updTrim);
 $('vol').addEventListener('input',()=>{const v=+$('vol').value;$('vollab').textContent='Volume: '+(v>0?'+':'')+v+' dB'});
 function rnd(s){return()=>(s=s*16807%2147483647)/2147483647}
 function sky(g,w,h,st){const l=g.createLinearGradient(0,0,0,h);st.forEach(([p,c])=>l.addColorStop(p,c));g.fillStyle=l;g.fillRect(0,0,w,h)}
