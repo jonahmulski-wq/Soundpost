@@ -50,6 +50,7 @@ audio{width:100%;margin-top:10px}
 .pics canvas{width:100%;height:auto;aspect-ratio:1;display:block}
 .vbtns{display:flex;gap:10px;flex-wrap:wrap}
 .flat .ctl,.flat .pics{margin-left:0}
+.sec+.row{border-top:1px solid var(--line);margin-top:0;padding-top:16px}
 </style>
 </head>
 <body>
@@ -113,6 +114,7 @@ audio{width:100%;margin-top:10px}
     <div class="ctl" style="display:block"><label>Or use your own photo: <input type="file" id="pimg" accept="image/*"></label></div>
     <div class="ctl"><span>Shape</span><select id="vshape"><option value="sq">Square</option><option value="tall">Tall (Stories, Reels)</option></select></div>
     <div class="ctl vbtns" style="display:flex"><button class="btn main" id="vmake" type="button">Make video</button><button class="btn" id="vshare" type="button" disabled>Share video</button><button class="btn" id="vdl" type="button" disabled>Download video</button></div>
+    <div class="msg" id="vmsg" role="status" hidden style="margin-top:10px"></div>
     <video id="vplayer" controls playsinline hidden style="width:100%;margin-top:10px;border-radius:10px"></video>
   </div></div>
 </main>
@@ -121,6 +123,7 @@ audio{width:100%;margin-top:10px}
 const $=id=>document.getElementById(id);
 let ctx,raw=null,out=null,blob=null,rec=null,stream=null,chunks=[],tick=null,t0=0,playing=null,dirty=true;
 const msg=t=>$('msg').textContent=t;
+const vm=t=>{const e=$('vmsg');e.hidden=false;e.textContent=t};
 function setPrev(v){$('prev').disabled=v;$('prev2').disabled=v}
 function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100})}catch(e){ctx=new (window.AudioContext||window.webkitAudioContext)()}}
   if(ctx.state==='suspended')ctx.resume();return ctx}
@@ -255,10 +258,10 @@ function paint(g,w,h){if(pic.img){const im=pic.img,iw=im.naturalWidth||im.width,
 [['desert','Desert sunset'],['forest','Misty forest'],['night','Starry night'],['ocean','Ocean dawn']].forEach(([k,n],i)=>{
   const b=document.createElement('button'),c=document.createElement('canvas');b.type='button';b.title=n;b.setAttribute('aria-label',n);c.width=c.height=96;scene(c.getContext('2d'),96,96,k);b.appendChild(c);
   b.onclick=()=>{pic={kind:k,img:null};[...$('pics').children].forEach(x=>x.classList.toggle('sel',x===b))};if(i===0)b.classList.add('sel');$('pics').appendChild(b)});
-$('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im};[...$('pics').children].forEach(x=>x.classList.remove('sel'));msg('Your photo is selected.')};im.src=URL.createObjectURL(f)};
+$('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im};[...$('pics').children].forEach(x=>x.classList.remove('sel'));vm('Your photo is selected.')};im.src=URL.createObjectURL(f)};
 $('vmake').onclick=async()=>{
-  if(!blob||dirty){msg('Tap Preview first so the latest sound is included.');return}
-  if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){msg('This browser can’t make video here.');return}
+  if(!blob||dirty){vm('Tap Preview first so the latest sound is included.');return}
+  if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){vm('This browser can’t make video here.');return}
   stopPlay();$('vmake').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;
   try{const tall=$('vshape').value==='tall',W=tall?540:720,H=tall?960:720,cv=document.createElement('canvas'),bg=document.createElement('canvas');
     const BW=Math.round(W*1.2),BH=Math.round(H*1.2);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');paint(bg.getContext('2d'),BW,BH);
@@ -271,18 +274,18 @@ $('vmake').onclick=async()=>{
     mr.ondataavailable=e=>e.data.size&&parts.push(e.data);
     const done=new Promise(r=>{mr.onstop=r}),t0=performance.now();let run=true;
     const fr=()=>{if(!run)return;const p=Math.min(1,(performance.now()-t0)/1000/dur);view(p);g.fillStyle='rgba(255,255,255,.85)';g.fillRect(0,H-8,W*p,8);
-      msg('Making your video… '+Math.round(p*100)+'%. Keep this screen open.');requestAnimationFrame(fr)};
+      vm('Making your video… '+Math.round(p*100)+'%. Keep this screen open.');requestAnimationFrame(fr)};
     mr.start(250);src.start();fr();src.onended=()=>setTimeout(()=>{run=false;mr.stop()},300);
     await done;
     const type=(mr.mimeType||mt||'video/webm').split(';')[0];vext=type.includes('mp4')?'mp4':'webm';vblob=new Blob(parts,{type});
     const old=$('vplayer').src;$('vplayer').src=URL.createObjectURL(vblob);$('vplayer').hidden=false;if(old)URL.revokeObjectURL(old);
     $('vshare').disabled=false;$('vdl').disabled=false;
-    msg(vext==='mp4'?'Your video is ready. Tap Share video.':'Your video is ready, but this browser made a WebM file. Instagram usually needs MP4, so try Chrome on a newer phone or Safari on iPhone.')}
-  catch(e){msg('Couldn’t make the video ('+(e.message||e.name||'error')+').')}
+    vm(vext==='mp4'?'Your video is ready. Tap Share video.':'Your video is ready, but this browser made a WebM file. Instagram usually needs MP4, so try Chrome on a newer phone or Safari on iPhone.')}
+  catch(e){vm('Couldn’t make the video ('+(e.message||e.name||'error')+').')}
   $('vmake').disabled=false};
 $('vshare').onclick=async()=>{if(!vblob)return;const f=new File([vblob],'Soundpost.'+vext,{type:vblob.type});
   if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return}}
-  msg('The share sheet isn’t available here. Use Download video instead.')};
+  vm('The share sheet isn’t available here. Use Download video instead.')};
 
 function save(b,name){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
 $('dl').onclick=()=>{if(!blob||dirty){msg('Tap Preview first so the latest effects are included.');return}save(blob,'Soundpost.'+(blob.type==='audio/mpeg'?'mp3':'wav'))};
