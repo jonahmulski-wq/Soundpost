@@ -114,7 +114,7 @@ audio{width:100%;margin-top:10px}
     <div class="ctl" style="display:block"><label>Or use your own photo: <input type="file" id="pimg" accept="image/*"></label></div>
     <div class="ctl"><span>Shape</span><select id="vshape"><option value="sq">Square</option><option value="tall">Tall (Stories, Reels)</option></select></div>
     <div class="ctl"><span>Motion</span><select id="vmotion"><option value="zin" selected>Zoom in</option><option value="zout">Zoom out</option><option value="pl">Pan left</option><option value="pr">Pan right</option><option value="pu">Pan up</option><option value="pd">Pan down</option><option value="still">Still</option></select>
-    <span>Amount</span><input type="range" id="vamt" min="0" max="100" value="50"></div>
+    <span>Speed</span><select id="vamt"><option value="0.1">Slow</option><option value="0.2" selected>Medium</option><option value="0.35">Fast</option></select></div>
     <div class="ctl vbtns" style="display:flex"><button class="btn main" id="vmake" type="button">Make video</button><button class="btn" id="vshare" type="button" disabled>Share video</button><button class="btn" id="vdl" type="button" disabled>Download video</button></div>
     <div class="msg" id="vmsg" role="status" hidden style="margin-top:10px"></div>
     <video id="vplayer" controls playsinline hidden style="width:100%;margin-top:10px;border-radius:10px"></video>
@@ -142,8 +142,8 @@ function draw(d){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.clien
 function drawLive(pk){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;if(c.width!==w*k){c.width=w*k;c.height=h*k}
   const g=c.getContext('2d');g.setTransform(k,0,0,k,0,0);g.clearRect(0,0,w,h);
   const cs=getComputedStyle(document.documentElement),ok=cs.getPropertyValue('--acc'),hot=cs.getPropertyValue('--rec');
-  const n=pk.length,step=3,cols=Math.floor(w/step),per=Math.max(1,Math.ceil(n/cols));
-  for(let x=0,i=0;i<n;x+=step,i+=per){let m=0;for(let j=i;j<Math.min(n,i+per);j++)if(pk[j]>m)m=pk[j];
+  const n=pk.length,step=3,cols=Math.ceil(w/step)+1;
+  for(let i=Math.max(0,n-cols);i<n;i++){const m=pk[i],x=w-(n-i)*step;
     g.fillStyle=m>.95?hot:ok;const bh=Math.max(1,Math.min(1,m)*h*.95);g.fillRect(x,(h-bh)/2,2,bh)}}
 
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
@@ -158,9 +158,9 @@ async function startRec(){AC();
   try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
   catch(e){msg('Microphone unavailable ('+(e.name||'error')+'). Allow mic access, or use “choose an audio file”.');return}
   try{const c=AC(),sn=c.createMediaStreamSource(stream),an=c.createAnalyser();an.fftSize=2048;sn.connect(an);
-    const buf=new Float32Array(an.fftSize),pk=[];live={sn};
-    const loop=()=>{if(!live)return;an.getFloatTimeDomainData(buf);let m=0;for(let i=0;i<buf.length;i++){const a=Math.abs(buf[i]);if(a>m)m=a}
-      pk.push(m);drawLive(pk);requestAnimationFrame(loop)};requestAnimationFrame(loop)}catch(e){live=null}
+    const buf=new Float32Array(an.fftSize),pk=[];let acc=0,last=performance.now();live={sn};
+    const loop=()=>{if(!live)return;an.getFloatTimeDomainData(buf);for(let i=0;i<buf.length;i++){const a=Math.abs(buf[i]);if(a>acc)acc=a}
+      const now=performance.now();if(now-last>=40){pk.push(acc);acc=0;last=now;if(pk.length>2000)pk.splice(0,1000);drawLive(pk)}requestAnimationFrame(loop)};requestAnimationFrame(loop)}catch(e){live=null}
   chunks=[];rec=new MediaRecorder(stream);rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
   rec.onstop=async()=>{clearInterval(tick);if(live){try{live.sn.disconnect()}catch(e){}live=null}stream.getTracks().forEach(t=>t.stop());$('rec').classList.remove('on');$('rec').textContent='Rec';
     await load(await new Blob(chunks,{type:rec.mimeType}).arrayBuffer())};
@@ -279,7 +279,7 @@ $('vmake').onclick=async()=>{
   stopPlay();$('vmake').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;
   try{const tall=$('vshape').value==='tall',W=tall?540:720,H=tall?960:720,cv=document.createElement('canvas'),bg=document.createElement('canvas');
     const BW=Math.round(W*1.35),BH=Math.round(H*1.35);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');paint(bg.getContext('2d'),BW,BH);
-    const mo=$('vmotion').value,Z=1+.35*(+$('vamt').value/100);
+    const mo=$('vmotion').value,Z=1+(+$('vamt').value);
     const view=p=>{const e=p*p*(3-2*p);let z=1,fx=.5,fy=.5;
       if(mo==='zin')z=1+(Z-1)*e;else if(mo==='zout')z=Z-(Z-1)*e;else if(mo!=='still'){z=Z;if(mo==='pr')fx=e;else if(mo==='pl')fx=1-e;else if(mo==='pd')fy=e;else fy=1-e}
       const sw=BW/z,sh=BH/z;g.drawImage(bg,(BW-sw)*fx,(BH-sh)*fy,sw,sh,0,0,W,H)};view(0);
