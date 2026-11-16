@@ -294,7 +294,8 @@ $('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image
 $('vmake').onclick=async()=>{
   if(!await prep(vm))return;
   if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){vm('This browser can’t make video here.');return}
-  stopPlay();$('vmake').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;
+  stopPlay();$('vmake').disabled=true;$('vmake').textContent='Making… 0%';$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;
+  $('vmsg').hidden=false;$('vmsg').scrollIntoView({behavior:'smooth',block:'center'});
   try{const tall=$('vshape').value==='tall',W=tall?540:720,H=tall?960:720,cv=document.createElement('canvas'),bg=document.createElement('canvas');
     const BW=Math.round(W*1.35),BH=Math.round(H*1.35);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';paint(bg.getContext('2d'),BW,BH);
     const mo=$('vmotion').value,Z=1+(+$('vamt').value);
@@ -309,15 +310,16 @@ $('vmake').onclick=async()=>{
     mr.ondataavailable=e=>e.data.size&&parts.push(e.data);
     const done=new Promise(r=>{mr.onstop=r}),t0=performance.now();let run=true;
     const fr=()=>{if(!run)return;const p=Math.min(1,(performance.now()-t0)/1000/dur);view(p);g.fillStyle='rgba(255,255,255,.85)';g.fillRect(0,H-8,W*p,8);
-      vm('Making your video… '+Math.round(p*100)+'%. Keep this screen open.');requestAnimationFrame(fr)};
+      const pc=Math.round(p*100);$('vmake').textContent='Making… '+pc+'%';vm('Making your video… '+pc+'%. Keep this screen open.');requestAnimationFrame(fr)};
     mr.start(250);src.start();fr();src.onended=()=>setTimeout(()=>{run=false;mr.stop()},300);
     await done;
     const type=(mr.mimeType||mt||'video/webm').split(';')[0];vext=type.includes('mp4')?'mp4':'webm';vblob=new Blob(parts,{type});
     const old=$('vplayer').src;$('vplayer').src=URL.createObjectURL(vblob);$('vplayer').hidden=false;if(old)URL.revokeObjectURL(old);
     $('vshare').disabled=false;$('vdl').disabled=false;
+    setTimeout(()=>$('vplayer').scrollIntoView({behavior:'smooth',block:'center'}),100);
     vm(vext==='mp4'?'Your video is ready. Tap Share Video.':'Your video is ready, but this browser made a WebM file. Instagram usually needs MP4, so try Chrome on a newer phone or Safari on iPhone.')}
   catch(e){vm('Couldn’t make the video ('+(e.message||e.name||'error')+').')}
-  $('vmake').disabled=false};
+  $('vmake').disabled=false;$('vmake').textContent='Make Video'};
 $('vshare').onclick=async()=>{if(!vblob)return;const f=new File([vblob],vname(),{type:vblob.type});
   if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return}}
   vm('The share sheet isn’t available here. Use Download Video instead.')};
