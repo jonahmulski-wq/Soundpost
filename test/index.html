@@ -50,6 +50,8 @@ audio{width:100%;margin-top:10px}
 .pics canvas{width:100%;height:auto;aspect-ratio:1;display:block}
 .vbtns{display:flex;gap:10px;flex-wrap:wrap}
 .flat .ctl,.flat .pics{margin-left:0}
+.step{font-weight:600;font-size:15px;color:var(--ink);margin:16px 0 6px}
+.steps{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start}
 .sec+.row{border-top:1px solid var(--line);margin-top:0;padding-top:16px}
 </style>
 </head>
@@ -67,6 +69,7 @@ audio{width:100%;margin-top:10px}
   <span class="time" id="tm">0:00</span>
   <button class="rec" id="rec" aria-label="Record">Rec</button>
   <button class="btn main" id="prev2" disabled>Preview</button>
+  <button class="btn" id="stop2" disabled>Stop</button>
 </div>
 <div class="file"><label>or choose an audio file: <input type="file" id="file" accept="audio/*"></label></div>
 
@@ -107,14 +110,18 @@ audio{width:100%;margin-top:10px}
 <div class="sec">Share a Soundpost video</div>
 <div class="fxr flat" id="vidbox">
   <div>
-    <div class="ctl" style="display:block">Pick a picture. Your music plays over it. Tap Preview first so the latest sound is included.</div>
+    <div class="step">1. Choose A Photo Or Upload Your Own</div>
     <div class="pics" id="pics"></div>
-    <div class="ctl" style="display:block"><label>Or use your own photo: <input type="file" id="pimg" accept="image/*"></label></div>
+    <div class="ctl" style="display:block"><label>Upload Photo: <input type="file" id="pimg" accept="image/*"></label></div>
+    <div class="step">2. Adjust Video Settings</div>
     <div class="ctl"><span>Shape</span><select id="vshape"><option value="sq">Square</option><option value="tall">Tall (Stories, Reels)</option></select></div>
     <div class="ctl"><span>Motion</span><select id="vmotion"><option value="zin" selected>Zoom in</option><option value="zout">Zoom out</option><option value="pl">Pan left</option><option value="pr">Pan right</option><option value="pu">Pan up</option><option value="pd">Pan down</option><option value="still">Still</option></select>
-    <span>Speed</span><select id="vamt"><option value="0.1">Slow</option><option value="0.2" selected>Medium</option><option value="0.35">Fast</option></select></div>
-    <div class="ctl" style="display:block">Changed a setting? Tap Make video again to see it.</div>
-    <div class="ctl vbtns" style="display:flex"><button class="btn main" id="vmake" type="button">Make video</button><button class="btn" id="vshare" type="button" disabled>Share video</button><button class="btn" id="vdl" type="button" disabled>Download video</button></div>
+    <span>Motion Speed</span><select id="vamt"><option value="0.1">Slow</option><option value="0.2" selected>Medium</option><option value="0.35">Fast</option></select></div>
+    <div class="steps">
+      <div><div class="step">3. Make Video</div><button class="btn main" id="vmake" type="button">Make video</button></div>
+      <div><div class="step">4. Share Or Download Video</div><div class="vbtns"><button class="btn" id="vshare" type="button" disabled>Share video</button><button class="btn" id="vdl" type="button" disabled>Download video</button></div></div>
+    </div>
+    <div class="step">5. Changed A Video Setting? Tap “Make Video” Again.</div>
     <div class="msg" id="vmsg" role="status" hidden style="margin-top:10px"></div>
     <video id="vplayer" controls playsinline hidden style="width:100%;margin-top:10px;border-radius:10px"></video>
   </div></div>
@@ -147,7 +154,7 @@ function drawLive(pk){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.
 
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
-  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();setPrev(false);let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
+  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();setPrev(false);$('share').disabled=false;$('dl').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
   msg(cl>20?'Got it. Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the flute helps. “Tame harsh notes” can soften it but can’t fully repair it.':'Got it. Trim the ends if you want, choose effects, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
@@ -201,7 +208,8 @@ async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/10
   const N=oc.length;
   src.start();
   const y=(await oc.startRendering()).getChannelData(0).slice();let pk=0;
-  for(let i=0;i<y.length;i++)pk=Math.max(pk,Math.abs(y[i]));if(pk>0)for(let i=0;i<y.length;i++)y[i]*=.7/pk;
+  for(let i=0;i<y.length;i++)pk=Math.max(pk,Math.abs(y[i]));let ss=0;for(let i=0;i<y.length;i++)ss+=y[i]*y[i];const rms=Math.sqrt(ss/Math.max(1,y.length));
+  if(pk>0){const gn=Math.min(.7/pk,.12/Math.max(rms,1e-6));for(let i=0;i<y.length;i++)y[i]*=gn}
   const vg=Math.pow(10,($('volon').checked?+$('vol').value:0)/20),sc=v=>Math.abs(v)<.8?v:Math.sign(v)*(.8+.2*Math.tanh((Math.abs(v)-.8)/.2));
   for(let i=0;i<y.length;i++)y[i]=sc(y[i]*vg);
   return{data:y,sr}}
@@ -216,26 +224,32 @@ function mp3(y,sr){if(!window.lamejs)return wav(y,sr);
     for(let i=0;i<p.length;i+=1152){const c=enc.encodeBuffer(p.subarray(i,i+1152));if(c.length)parts.push(c)}
     const e=enc.flush();if(e.length)parts.push(e);return new Blob(parts,{type:'audio/mpeg'})}catch(e){return wav(y,sr)}}
 
-function stopPlay(){if(playing){try{playing.stop()}catch(e){}playing=null}$('stop').disabled=true}
+function stopPlay(){if(playing){try{playing.stop()}catch(e){}playing=null}$('stop').disabled=true;$('stop2').disabled=true}
+async function ready(){if(!raw)return false;if(blob&&!dirty&&out)return true;
+  out=await render();draw(out.data);blob=mp3(out.data,out.sr);
+  const old=$('player').src;$('player').src=URL.createObjectURL(blob);$('player').hidden=false;if(old)URL.revokeObjectURL(old);
+  dirty=false;return true}
 $('prev').onclick=async()=>{stopPlay();setPrev(true);msg('Applying effects…');
-  try{out=await render();draw(out.data);blob=mp3(out.data,out.sr);
-    const old=$('player').src;$('player').src=URL.createObjectURL(blob);$('player').hidden=false;if(old)URL.revokeObjectURL(old);
+  try{await ready();
     const b=AC().createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
     const s=AC().createBufferSource();s.buffer=b;s.connect(AC().destination);s.onended=()=>{if(playing===s)stopPlay()};s.start();playing=s;
-    dirty=false;$('stop').disabled=false;$('share').disabled=false;$('dl').disabled=false;
+    $('stop').disabled=false;$('stop2').disabled=false;$('share').disabled=false;$('dl').disabled=false;
     msg(blob.type==='audio/mpeg'?'Playing. Happy with it? Tap Share MP3.':'Playing. (MP3 encoder didn’t load, so this is a WAV file.)')}
   catch(e){msg('Something went wrong applying effects. Try a shorter clip.')}
   setPrev(false)};
 $('prev2').onclick=()=>$('prev').click();
-$('stop').onclick=stopPlay;
+$('stop').onclick=stopPlay;$('stop2').onclick=stopPlay;
 
-$('share').onclick=async()=>{if(!blob||dirty){msg('Tap Preview first so the latest effects are included.');return}
+async function prep(say){if(!raw){say('Record or choose a clip first.');return false}
+  if(blob&&!dirty)return true;say('Getting your sound ready…');
+  try{return await ready()}catch(e){say('Something went wrong applying effects. Try a shorter clip.');return false}}
+$('share').onclick=async()=>{const had=blob&&!dirty;if(!await prep(msg))return;
   const f=new File([blob],'Soundpost.'+(blob.type==='audio/mpeg'?'mp3':'wav'),{type:blob.type});
   if(navigator.canShare&&navigator.canShare({files:[f]})){
-    try{await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return}}
+    try{await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return;if(!had){msg('Your MP3 is ready. Tap Share MP3 again.');return}}}
   msg('The share sheet isn’t available here. Use Download MP3 instead.')};
 
-function touch(){dirty=true;$('share').disabled=true;$('dl').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true}
+function touch(){dirty=true;$('vshare').disabled=true;$('vdl').disabled=true}
 function updTrim(){if(!raw)return;let a=+$('ts').value,b=+$('te').value;
   if(document.activeElement===$('ts')){a=Math.min(a,b-10);$('ts').value=a}else{b=Math.max(b,a+10);$('te').value=b}
   draw(raw.data);const c=$('cv'),g=c.getContext('2d'),w=c.clientWidth,h=c.clientHeight;
@@ -273,15 +287,15 @@ function paint(g,w,h){if(pic.img){const im=pic.img,iw=im.naturalWidth||im.width,
 $('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im,name:f.name.replace(/\.[^.]+$/,'').trim()};[...$('pics').children].forEach(x=>x.classList.remove('sel'));vm(vblob?'Your photo is selected. Tap Make video to update your video.':'Your photo is selected.')};im.src=URL.createObjectURL(f)};
 ['vshape','vmotion','vamt'].forEach(id=>$(id).addEventListener('change',vchg));
 $('vmake').onclick=async()=>{
-  if(!blob||dirty){vm('Tap Preview first so the latest sound is included.');return}
+  if(!await prep(vm))return;
   if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){vm('This browser can’t make video here.');return}
   stopPlay();$('vmake').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;
   try{const tall=$('vshape').value==='tall',W=tall?540:720,H=tall?960:720,cv=document.createElement('canvas'),bg=document.createElement('canvas');
-    const BW=Math.round(W*1.35),BH=Math.round(H*1.35);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');paint(bg.getContext('2d'),BW,BH);
+    const BW=Math.round(W*1.35),BH=Math.round(H*1.35);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';paint(bg.getContext('2d'),BW,BH);
     const mo=$('vmotion').value,Z=1+(+$('vamt').value);
     const view=p=>{const e=p*p*(3-2*p);let z=1,fx=.5,fy=.5;
       if(mo==='zin')z=1+(Z-1)*e;else if(mo==='zout')z=Z-(Z-1)*e;else if(mo!=='still'){z=Z;if(mo==='pr')fx=e;else if(mo==='pl')fx=1-e;else if(mo==='pd')fy=e;else fy=1-e}
-      const sw=BW/z,sh=BH/z;g.drawImage(bg,(BW-sw)*fx,(BH-sh)*fy,sw,sh,0,0,W,H)};view(0);
+      const sc=W*z/BW,sw=BW/z,sh=BH/z;g.drawImage(bg,-(BW-sw)*fx*sc,-(BH-sh)*fy*sc,BW*sc,BH*sc)};view(0);
     const c=AC(),dest=c.createMediaStreamDestination(),b=c.createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
     const src=c.createBufferSource();src.buffer=b;src.connect(dest);
     const types=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm'],mt=types.find(t=>MediaRecorder.isTypeSupported(t))||'',dur=out.data.length/out.sr;
@@ -304,7 +318,7 @@ $('vshare').onclick=async()=>{if(!vblob)return;const f=new File([vblob],vname(),
   vm('The share sheet isn’t available here. Use Download video instead.')};
 
 function save(b,name){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
-$('dl').onclick=()=>{if(!blob||dirty){msg('Tap Preview first so the latest effects are included.');return}save(blob,'Soundpost.'+(blob.type==='audio/mpeg'?'mp3':'wav'))};
+$('dl').onclick=async()=>{if(!await prep(msg))return;save(blob,'Soundpost.'+(blob.type==='audio/mpeg'?'mp3':'wav'))};
 $('vdl').onclick=()=>{if(vblob)save(vblob,vname())};
 document.querySelectorAll('.fx input,.fx select').forEach(el=>el.addEventListener('input',touch));
 document.querySelectorAll('.fxr.acc').forEach(r=>{const c=r.querySelector('input[type=checkbox]'),f=()=>r.classList.toggle('open',c.checked);c.addEventListener('change',f);f()});
