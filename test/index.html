@@ -36,8 +36,8 @@ button,select{font:inherit;color:inherit}
 select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
 .msg{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;background:var(--panel);color:var(--ink);font-size:14px}
 audio{width:100%;margin-top:10px}
-.file{color:var(--mute);font-size:14px;text-align:center;margin-top:4px}
-.file input{max-width:100%}
+.file{color:var(--ink);font-size:16px;font-weight:600;text-align:center;margin-top:4px}
+.file input{max-width:100%;font:inherit}
 .sec{font:600 12px/1.2 Figtree,system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);margin:24px 0 2px}
 .fxr .body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s ease}
 .fxr.open .body{grid-template-rows:1fr}
@@ -123,10 +123,10 @@ audio{width:100%;margin-top:10px}
     <div class="ctl"><span>Motion</span><select id="vmotion"><option value="zin" selected>Zoom in</option><option value="zout">Zoom out</option><option value="pl">Pan left</option><option value="pr">Pan right</option><option value="pu">Pan up</option><option value="pd">Pan down</option><option value="still">Still</option></select>
     <span>Motion Speed</span><select id="vamt"><option value="0.1">Slow</option><option value="0.2" selected>Medium</option><option value="0.35">Fast</option></select></div>
     <div class="steps">
-      <div><div class="step">3. Make Video</div><button class="btn main" id="vmake" type="button">Make video</button></div>
-      <div><div class="step">4. Share Or Download Video</div><div class="vbtns"><button class="btn" id="vshare" type="button" disabled>Share video</button><button class="btn" id="vdl" type="button" disabled>Download video</button></div></div>
+      <div><div class="step">3. Make Video</div><button class="btn main" id="vmake" type="button">Make Video</button></div>
+      <div><div class="step">4. Share or Download Video</div><div class="vbtns"><button class="btn" id="vshare" type="button" disabled>Share Video</button><button class="btn" id="vdl" type="button" disabled>Download Video</button></div></div>
     </div>
-    <div class="step">5. Changed A Video Setting? Tap “Make Video” Again.</div>
+    <div class="step">5. Changed a Video Setting? Tap “Make Video” again.</div>
     <div class="msg" id="vmsg" role="status" hidden style="margin-top:10px"></div>
     <video id="vplayer" controls playsinline hidden style="width:100%;margin-top:10px;border-radius:10px"></video>
   </div></div>
@@ -283,13 +283,13 @@ function scene(g,w,h,k){
     g.fillStyle='#fff0c4';g.beginPath();g.arc(w*.5,h*.62,w*.09,Math.PI,0);g.fill();
     for(let i=0;i<28;i++){const ww=w*.2*(1-i/34)*(.7+.3*Math.sin(i*1.7));g.fillStyle='rgba(255,226,170,'+(.55*(1-i/28))+')';g.fillRect(w*.5-ww/2,h*.62+i*h*.012,ww,h*.006)}}}
 let pic={kind:'desert',img:null},vblob=null,vext='mp4';
-const vchg=()=>{if(vblob)vm('Settings changed. Tap Make video to update your video.')};
+const vchg=()=>{if(vblob)vm('Settings changed. Tap Make Video to update your video.')};
 const vname=()=>'Soundpost'+(pic.name?' '+pic.name:'')+'.'+vext;
 function paint(g,w,h){if(pic.img){const im=pic.img,iw=im.naturalWidth||im.width,ih=im.naturalHeight||im.height,sc=Math.max(w/iw,h/ih);g.fillStyle='#000';g.fillRect(0,0,w,h);g.drawImage(im,(w-iw*sc)/2,(h-ih*sc)/2,iw*sc,ih*sc)}else scene(g,w,h,pic.kind)}
 [['desert','Desert sunset'],['forest','Misty forest'],['night','Starry night'],['ocean','Ocean dawn']].forEach(([k,n],i)=>{
   const b=document.createElement('button'),c=document.createElement('canvas');b.type='button';b.title=n;b.setAttribute('aria-label',n);c.width=c.height=96;scene(c.getContext('2d'),96,96,k);b.appendChild(c);
   b.onclick=()=>{pic={kind:k,img:null};vchg();[...$('pics').children].forEach(x=>x.classList.toggle('sel',x===b))};if(i===0)b.classList.add('sel');$('pics').appendChild(b)});
-$('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im,name:f.name.replace(/\.[^.]+$/,'').trim()};[...$('pics').children].forEach(x=>x.classList.remove('sel'));vm(vblob?'Your photo is selected. Tap Make video to update your video.':'Your photo is selected.')};im.src=URL.createObjectURL(f)};
+$('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im,name:f.name.replace(/\.[^.]+$/,'').trim()};[...$('pics').children].forEach(x=>x.classList.remove('sel'));vm(vblob?'Your photo is selected. Tap Make Video to update your video.':'Your photo is selected.')};im.src=URL.createObjectURL(f)};
 ['vshape','vmotion','vamt'].forEach(id=>$(id).addEventListener('change',vchg));
 $('vmake').onclick=async()=>{
   if(!await prep(vm))return;
@@ -315,12 +315,12 @@ $('vmake').onclick=async()=>{
     const type=(mr.mimeType||mt||'video/webm').split(';')[0];vext=type.includes('mp4')?'mp4':'webm';vblob=new Blob(parts,{type});
     const old=$('vplayer').src;$('vplayer').src=URL.createObjectURL(vblob);$('vplayer').hidden=false;if(old)URL.revokeObjectURL(old);
     $('vshare').disabled=false;$('vdl').disabled=false;
-    vm(vext==='mp4'?'Your video is ready. Tap Share video.':'Your video is ready, but this browser made a WebM file. Instagram usually needs MP4, so try Chrome on a newer phone or Safari on iPhone.')}
+    vm(vext==='mp4'?'Your video is ready. Tap Share Video.':'Your video is ready, but this browser made a WebM file. Instagram usually needs MP4, so try Chrome on a newer phone or Safari on iPhone.')}
   catch(e){vm('Couldn’t make the video ('+(e.message||e.name||'error')+').')}
   $('vmake').disabled=false};
 $('vshare').onclick=async()=>{if(!vblob)return;const f=new File([vblob],vname(),{type:vblob.type});
   if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return}}
-  vm('The share sheet isn’t available here. Use Download video instead.')};
+  vm('The share sheet isn’t available here. Use Download Video instead.')};
 
 function save(b,name){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
 $('dl').onclick=async()=>{if(!await prep(msg))return;save(blob,'Soundpost.'+(blob.type==='audio/mpeg'?'mp3':'wav'))};
