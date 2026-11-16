@@ -57,7 +57,9 @@ audio{width:100%;margin-top:10px}
 .row.top .grp:last-child{gap:8px}
 .step{font-weight:600;font-size:15px;color:var(--ink);margin:16px 0 6px}
 .steps{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start}
-.sec+.row{border-top:1px solid var(--line);margin-top:0;padding-top:16px}
+.sec.big{font-size:15px;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-align:justify;text-align-last:justify;color:var(--ink);margin-top:30px}
+.lab{font:600 12px/1.2 Figtree,system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);border-top:1px solid var(--line);padding-top:12px;margin-top:6px}
+.lab+.row{margin-top:12px}
 </style>
 </head>
 <body>
@@ -103,7 +105,8 @@ audio{width:100%;margin-top:10px}
     <span>Amount</span><input type="range" id="octmix" min="10" max="100" value="55"></div></div></div></div>
 </div>
 
-<div class="sec">Share a Soundpost audio</div>
+<div class="sec big">Share a Soundpost audio or video</div>
+<div class="lab">Soundpost audio</div>
 <div class="row">
   <button class="btn main" id="prev" disabled>Preview</button>
   <button class="btn" id="stop" disabled>Stop</button>
@@ -111,8 +114,8 @@ audio{width:100%;margin-top:10px}
   <button class="btn" id="dl" disabled>Download MP3</button>
 </div>
 <audio id="player" controls hidden></audio>
-<div class="sec">Share a Soundpost video</div>
-<div class="fxr flat" id="vidbox">
+<div class="lab" style="margin-top:22px">Soundpost video</div>
+<div class="fxr flat" id="vidbox" style="border-top:0;padding-top:0">
   <div>
     <div class="step">1. Choose A Photo Or Upload Your Own</div>
     <div class="pics" id="pics"></div>
@@ -159,7 +162,7 @@ function drawLive(pk){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
   raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();setPrev(false);$('share').disabled=false;$('dl').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
-  msg(cl>20?'Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the instrument helps. Select “Tame harsh notes” below to soften it, but not fully repair it.':'Got it. Trim the ends if you want, choose effects, then tap Preview.')}
+  msg(cl>20?'Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the instrument helps. Select “Tame harsh notes” below to soften it, but not fully repair it.':'Trim the ends above, choose effects below, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
 async function startRec(){AC();
@@ -328,7 +331,9 @@ $('dl').onclick=async()=>{if(!await prep(msg))return;save(blob,'Soundpost.'+(blo
 $('vdl').onclick=()=>{if(vblob)save(vblob,vname())};
 document.querySelectorAll('.fx input,.fx select').forEach(el=>el.addEventListener('input',touch));
 document.querySelectorAll('.fxr.acc').forEach(r=>{const c=r.querySelector('input[type=checkbox]'),f=()=>r.classList.toggle('open',c.checked);c.addEventListener('change',f);f()});
-addEventListener('resize',()=>draw(out?out.data:raw&&raw.data));
+function fitBig(){const e=document.querySelector('.sec.big');let f=24;e.style.fontSize=f+'px';while(e.scrollWidth>e.clientWidth&&f>10){f-=.25;e.style.fontSize=f+'px'}}
+fitBig();if(document.fonts)document.fonts.ready.then(fitBig);
+addEventListener('resize',()=>{fitBig();draw(out?out.data:raw&&raw.data)});
 addEventListener('error',e=>msg('Error: '+e.message));
 draw(null);
 </script>
