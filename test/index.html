@@ -36,6 +36,7 @@ button,select{font:inherit;color:inherit}
 select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
 .msg{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;background:var(--panel);color:var(--ink);font-size:14px}
 audio{width:100%;margin-top:10px}
+audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-slider,audio::-webkit-media-controls-volume-control-container,audio::-webkit-media-controls-overflow-button{display:none!important}
 .file{color:var(--ink);font-size:16px;font-weight:600;text-align:center;margin-top:4px}
 .file input{max-width:100%;font:inherit}
 .sec{font:600 12px/1.2 Figtree,system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);margin:24px 0 2px}
@@ -115,7 +116,7 @@ audio{width:100%;margin-top:10px}
   <button class="btn" id="share" disabled>Share MP3</button>
   <button class="btn" id="dl" disabled>Download MP3</button>
 </div>
-<audio id="player" controls hidden></audio>
+<audio id="player" controls controlsList="nodownload noplaybackrate noremoteplayback" disableRemotePlayback hidden></audio>
 <div class="lab" style="margin-top:22px">Soundpost video</div>
 <div class="fxr flat" id="vidbox" style="border-top:0;padding-top:0">
   <div>
