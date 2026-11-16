@@ -60,6 +60,8 @@ audio{width:100%;margin-top:10px}
 .sec.big{font-size:15px;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-align:justify;text-align-last:justify;color:var(--ink);margin-top:30px}
 .lab{font:600 12px/1.2 Figtree,system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);border-top:1px solid var(--line);padding-top:12px;margin-top:6px}
 .lab+.row{margin-top:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid2 .btn{width:100%}
 </style>
 </head>
 <body>
@@ -107,7 +109,7 @@ audio{width:100%;margin-top:10px}
 
 <div class="sec big">Share Soundpost audio or video</div>
 <div class="lab">Soundpost audio</div>
-<div class="row">
+<div class="row grid2">
   <button class="btn main" id="prev" disabled>Preview</button>
   <button class="btn" id="stop" disabled>Stop</button>
   <button class="btn" id="share" disabled>Share MP3</button>
