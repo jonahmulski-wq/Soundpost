@@ -232,8 +232,10 @@ function mp3(y,sr){if(!window.lamejs)return wav(y,sr);
     const e=enc.flush();if(e.length)parts.push(e);return new Blob(parts,{type:'audio/mpeg'})}catch(e){return wav(y,sr)}}
 
 function stopPlay(){if(playing){try{playing.stop()}catch(e){}playing=null}$('stop').disabled=true;$('stop2').disabled=true}
+const kind=()=>blob&&blob.type!=='audio/mpeg'?'WAV':'MP3';
 async function ready(){if(!raw)return false;if(blob&&!dirty&&out)return true;
   out=await render();draw(out.data);blob=mp3(out.data,out.sr);
+  $('share').textContent='Share '+kind();$('dl').textContent='Download '+kind();
   const old=$('player').src;$('player').src=URL.createObjectURL(blob);$('player').hidden=false;if(old)URL.revokeObjectURL(old);
   dirty=false;return true}
 $('prev').onclick=async()=>{stopPlay();setPrev(true);msg('Applying effects…');
@@ -241,7 +243,7 @@ $('prev').onclick=async()=>{stopPlay();setPrev(true);msg('Applying effects…');
     const b=AC().createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
     const s=AC().createBufferSource();s.buffer=b;s.connect(AC().destination);s.onended=()=>{if(playing===s)stopPlay()};s.start();playing=s;
     $('stop').disabled=false;$('stop2').disabled=false;$('share').disabled=false;$('dl').disabled=false;
-    msg(blob.type==='audio/mpeg'?'Playing. Happy with it? Tap Share MP3.':'Playing. (MP3 encoder didn’t load, so this is a WAV file.)')}
+    msg(blob.type==='audio/mpeg'?'Playing… Ready to share it? Scroll down to “Share a Soundpost audio or video.”':'Playing… MP3 encoder didn’t load. Download a .wav file.')}
   catch(e){msg('Something went wrong applying effects. Try a shorter clip.')}
   setPrev(false)};
 $('prev2').onclick=()=>$('prev').click();
@@ -253,8 +255,8 @@ async function prep(say){if(!raw){say('Record or choose a clip first.');return f
 $('share').onclick=async()=>{const had=blob&&!dirty;if(!await prep(msg))return;
   const f=new File([blob],'Soundpost.'+(blob.type==='audio/mpeg'?'mp3':'wav'),{type:blob.type});
   if(navigator.canShare&&navigator.canShare({files:[f]})){
-    try{await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return;if(!had){msg('Your MP3 is ready. Tap Share MP3 again.');return}}}
-  msg('The share sheet isn’t available here. Use Download MP3 instead.')};
+    try{await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return;if(!had){msg('Your '+kind()+' is ready. Tap Share '+kind()+' again.');return}}}
+  msg('The share sheet isn’t available here. Use Download '+kind()+' instead.')};
 
 function touch(){dirty=true;$('vshare').disabled=true;$('vdl').disabled=true}
 function updTrim(){if(!raw)return;let a=+$('ts').value,b=+$('te').value;
