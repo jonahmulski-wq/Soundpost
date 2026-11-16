@@ -160,7 +160,7 @@ function drawLive(pk){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
   raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();setPrev(false);$('share').disabled=false;$('dl').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
-  msg(cl>20?'Got it. Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the instrument helps. Select “Tame harsh notes” below to soften it, but not fully repair it.':'Got it. Trim the ends if you want, choose effects, then tap Preview.')}
+  msg(cl>20?'Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the instrument helps. Select “Tame harsh notes” below to soften it, but not fully repair it.':'Got it. Trim the ends if you want, choose effects, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
 async function startRec(){AC();
