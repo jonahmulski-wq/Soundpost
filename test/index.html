@@ -80,8 +80,7 @@ audio{width:100%;margin-top:10px}
 
 <div class="sec">Clean up the sound</div>
 <div class="fx">
-  <div class="fxr acc"><label class="t"><input type="checkbox" id="lc"> Low cut (wind and rumble)</label>
-    <div class="body"><div><div class="ctl"><span>Amount</span><input type="range" id="lcf" min="40" max="400" value="120"></div></div></div></div>
+  <div class="fxr"><label class="t"><input type="checkbox" id="lc"> Low cut (wind and rumble)</label></div>
   <div class="fxr acc"><label class="t"><input type="checkbox" id="comp"> Tame harsh notes</label>
     <div class="body"><div><div class="ctl"><span>Amount</span><input type="range" id="camt" min="0" max="100" value="50"></div>
     <div class="ctl" style="display:block">Smooths out sudden loud notes so they don’t sound harsh.</div></div></div></div>
@@ -200,7 +199,7 @@ async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/10
   const tail=(echo?dl*7:0)+(rev?rs:0)+.1,oc=new OfflineAudioContext(1,Math.ceil(d.length+tail*sr),sr);
   const buf=oc.createBuffer(1,d.length,sr);buf.copyToChannel(d,0);
   const src=oc.createBufferSource();src.buffer=buf;let head=src;
-  if($('lc').checked){const hp=oc.createBiquadFilter();hp.type='highpass';hp.frequency.value=+$('lcf').value;hp.Q.value=.7;src.connect(hp);head=hp}
+  if($('lc').checked){const h1=oc.createBiquadFilter(),h2=oc.createBiquadFilter();h1.type=h2.type='highpass';h1.frequency.value=h2.frequency.value=90;h1.Q.value=.54;h2.Q.value=1.31;src.connect(h1);h1.connect(h2);head=h2}
   let node=head;
   if(echo){const mix=oc.createGain(),del=oc.createDelay(2),g=oc.createGain(),w=oc.createGain();
     del.delayTime.value=dl;g.gain.value=fb;w.gain.value=+$('emix').value/100;
