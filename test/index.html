@@ -111,12 +111,14 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
 <div class="sec big">Share Soundpost audio or video</div>
 <div class="lab">Soundpost audio</div>
 <div class="row grid2">
-  <button class="btn main" id="prev" disabled>Preview</button>
+<button class="btn main" id="prev" disabled>Preview</button>
   <button class="btn" id="stop" disabled>Stop</button>
+</div>
+<audio id="player" controls controlsList="nodownload noplaybackrate noremoteplayback" disableRemotePlayback hidden></audio>
+<div class="row grid2" style="margin-top:10px">
   <button class="btn" id="share" disabled>Share MP3</button>
   <button class="btn" id="dl" disabled>Download MP3</button>
 </div>
-<audio id="player" controls controlsList="nodownload noplaybackrate noremoteplayback" disableRemotePlayback hidden></audio>
 <div class="lab" style="margin-top:22px">Soundpost video</div>
 <div class="fxr flat" id="vidbox" style="border-top:0;padding-top:0">
   <div>
