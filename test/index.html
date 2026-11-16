@@ -231,7 +231,13 @@ function mp3(y,sr){if(!window.lamejs)return wav(y,sr);
     for(let i=0;i<p.length;i+=1152){const c=enc.encodeBuffer(p.subarray(i,i+1152));if(c.length)parts.push(c)}
     const e=enc.flush();if(e.length)parts.push(e);return new Blob(parts,{type:'audio/mpeg'})}catch(e){return wav(y,sr)}}
 
-function stopPlay(){if(playing){try{playing.stop()}catch(e){}playing=null}$('stop').disabled=true;$('stop2').disabled=true}
+function stopPlay(){const p=$('player');try{p.pause();p.currentTime=0}catch(e){}$('stop').disabled=true;$('stop2').disabled=true}
+function canStop(v){$('stop').disabled=!v;$('stop2').disabled=!v}
+let busy=false;
+const playMsg=()=>msg(blob.type==='audio/mpeg'?'Playing… Ready to share it? Scroll down to “Share Soundpost audio or video.”':'Playing… MP3 encoder didn’t load. Download a .wav file.');
+$('player').addEventListener('play',async()=>{const p=$('player');canStop(true);
+  if(dirty&&raw&&!busy){busy=true;p.pause();msg('Applying effects…');try{await ready();p.currentTime=0;await p.play();playMsg()}catch(e){msg('Something went wrong applying effects. Try again, or try a shorter clip.')}busy=false}});
+$('player').addEventListener('ended',()=>{if(!busy)stopPlay()});
 const kind=()=>blob&&blob.type!=='audio/mpeg'?'WAV':'MP3';
 async function ready(){if(!raw)return false;if(blob&&!dirty&&out)return true;
   out=await render();draw(out.data);blob=mp3(out.data,out.sr);
@@ -240,10 +246,9 @@ async function ready(){if(!raw)return false;if(blob&&!dirty&&out)return true;
   dirty=false;return true}
 $('prev').onclick=async()=>{stopPlay();setPrev(true);msg('Applying effects…');
   try{await ready();
-    const b=AC().createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
-    const s=AC().createBufferSource();s.buffer=b;s.connect(AC().destination);s.onended=()=>{if(playing===s)stopPlay()};s.start();playing=s;
-    $('stop').disabled=false;$('stop2').disabled=false;$('share').disabled=false;$('dl').disabled=false;
-    msg(blob.type==='audio/mpeg'?'Playing… Ready to share it? Scroll down to “Share Soundpost audio or video.”':'Playing… MP3 encoder didn’t load. Download a .wav file.')}
+    const p=$('player');p.currentTime=0;await p.play();
+    canStop(true);$('share').disabled=false;$('dl').disabled=false;
+    playMsg()}
   catch(e){msg('Something went wrong applying effects. Try again, or try a shorter clip.')}
   setPrev(false)};
 $('prev2').onclick=()=>$('prev').click();
