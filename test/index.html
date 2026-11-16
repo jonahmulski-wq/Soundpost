@@ -105,7 +105,7 @@ audio{width:100%;margin-top:10px}
     <span>Amount</span><input type="range" id="octmix" min="10" max="100" value="55"></div></div></div></div>
 </div>
 
-<div class="sec big">Share a Soundpost audio or video</div>
+<div class="sec big">Share Soundpost audio or video</div>
 <div class="lab">Soundpost audio</div>
 <div class="row">
   <button class="btn main" id="prev" disabled>Preview</button>
@@ -243,15 +243,15 @@ $('prev').onclick=async()=>{stopPlay();setPrev(true);msg('Applying effects…');
     const b=AC().createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
     const s=AC().createBufferSource();s.buffer=b;s.connect(AC().destination);s.onended=()=>{if(playing===s)stopPlay()};s.start();playing=s;
     $('stop').disabled=false;$('stop2').disabled=false;$('share').disabled=false;$('dl').disabled=false;
-    msg(blob.type==='audio/mpeg'?'Playing… Ready to share it? Scroll down to “Share a Soundpost audio or video.”':'Playing… MP3 encoder didn’t load. Download a .wav file.')}
-  catch(e){msg('Something went wrong applying effects. Try a shorter clip.')}
+    msg(blob.type==='audio/mpeg'?'Playing… Ready to share it? Scroll down to “Share Soundpost audio or video.”':'Playing… MP3 encoder didn’t load. Download a .wav file.')}
+  catch(e){msg('Something went wrong applying effects. Try again, or try a shorter clip.')}
   setPrev(false)};
 $('prev2').onclick=()=>$('prev').click();
 $('stop').onclick=stopPlay;$('stop2').onclick=stopPlay;
 
 async function prep(say){if(!raw){say('Record or choose a clip first.');return false}
   if(blob&&!dirty)return true;say('Getting your sound ready…');
-  try{return await ready()}catch(e){say('Something went wrong applying effects. Try a shorter clip.');return false}}
+  try{return await ready()}catch(e){say('Something went wrong applying effects. Try again, or try a shorter clip.');return false}}
 $('share').onclick=async()=>{const had=blob&&!dirty;if(!await prep(msg))return;
   const f=new File([blob],'Soundpost.'+(blob.type==='audio/mpeg'?'mp3':'wav'),{type:blob.type});
   if(navigator.canShare&&navigator.canShare({files:[f]})){
