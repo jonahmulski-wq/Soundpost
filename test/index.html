@@ -50,6 +50,11 @@ audio{width:100%;margin-top:10px}
 .pics canvas{width:100%;height:auto;aspect-ratio:1;display:block}
 .vbtns{display:flex;gap:10px;flex-wrap:wrap}
 .flat .ctl,.flat .pics{margin-left:0}
+.row.top{justify-content:space-between;flex-wrap:nowrap}
+.row.top .grp{display:flex;gap:10px;align-items:center}
+.row.top .time{text-align:left;min-width:2.4em}
+.row.top .btn{padding:10px 13px}
+.row.top .grp:last-child{gap:8px}
 .step{font-weight:600;font-size:15px;color:var(--ink);margin:16px 0 6px}
 .steps{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start}
 .sec+.row{border-top:1px solid var(--line);margin-top:0;padding-top:16px}
@@ -65,13 +70,13 @@ audio{width:100%;margin-top:10px}
     <div class="ctl"><span>Start</span><input type="range" id="ts" min="0" max="1000" value="0"><span>End</span><input type="range" id="te" min="0" max="1000" value="1000"></div>
     <div class="ctl" style="display:block" id="tinfo"></div></div>
 <div class="msg" id="msg" role="status">Page loaded. Tap Rec to start.</div>
-<div class="row">
-  <span class="time" id="tm">0:00</span>
-  <button class="rec" id="rec" aria-label="Record">Rec</button>
-  <button class="btn main" id="prev2" disabled>Preview</button>
-  <button class="btn" id="stop2" disabled>Stop</button>
+<div class="row top">
+  <div class="grp"><span class="time" id="tm">0:00</span>
+  <button class="rec" id="rec" aria-label="Record">Rec</button></div>
+  <div class="grp"><button class="btn main" id="prev2" disabled>Preview</button>
+  <button class="btn" id="stop2" disabled>Stop</button></div>
 </div>
-<div class="file"><label>or choose an audio file: <input type="file" id="file" accept="audio/*"></label></div>
+<div class="file" style="text-align:left"><label>or choose an audio file: <input type="file" id="file" accept="audio/*"></label></div>
 
 <div class="sec">Clean up the sound</div>
 <div class="fx">
