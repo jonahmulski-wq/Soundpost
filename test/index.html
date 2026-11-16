@@ -199,7 +199,7 @@ async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/10
   const tail=(echo?dl*7:0)+(rev?rs:0)+.1,oc=new OfflineAudioContext(1,Math.ceil(d.length+tail*sr),sr);
   const buf=oc.createBuffer(1,d.length,sr);buf.copyToChannel(d,0);
   const src=oc.createBufferSource();src.buffer=buf;let head=src;
-  if($('lc').checked){const h1=oc.createBiquadFilter(),h2=oc.createBiquadFilter();h1.type=h2.type='highpass';h1.frequency.value=h2.frequency.value=90;h1.Q.value=.54;h2.Q.value=1.31;src.connect(h1);h1.connect(h2);head=h2}
+  if($('lc').checked){const h1=oc.createBiquadFilter(),h2=oc.createBiquadFilter();h1.type=h2.type='highpass';h1.frequency.value=h2.frequency.value=70;h1.Q.value=.54;h2.Q.value=1.31;src.connect(h1);h1.connect(h2);head=h2}
   let node=head;
   if(echo){const mix=oc.createGain(),del=oc.createDelay(2),g=oc.createGain(),w=oc.createGain();
     del.delayTime.value=dl;g.gain.value=fb;w.gain.value=+$('emix').value/100;
