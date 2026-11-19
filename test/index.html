@@ -69,6 +69,8 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
 <main>
 <h1>Soundpost</h1>
 <p class="sub">Record a sound bite, add effects, share your Soundpost.</p>
+<div class="msg" id="tbar" hidden style="margin:0 0 14px"><b>Test page <span id="tver"></span>.</b> Each Share or Download sends its details (phone, settings, no sound or picture) to the Soundpost test log.
+  <div class="ctl" style="margin-top:8px"><span>Your name</span><input type="text" id="tname" placeholder="Tester name" style="flex:1;min-width:0;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px"></div></div>
 
 <div class="wave"><canvas id="cv"></canvas></div>
 <div class="fxr" id="trimbox" hidden style="border-top:0;padding-top:8px"><label class="t">Trim the recording (gray parts get cut)</label>
@@ -137,6 +139,12 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
     <div class="msg" id="vmsg" role="status" hidden style="margin-top:10px"></div>
     <video id="vplayer" controls playsinline hidden style="width:100%;margin-top:10px;border-radius:10px"></video>
   </div></div>
+<div id="tbox" hidden>
+  <div class="lab" style="margin-top:22px">Test info (last Share or Download)</div>
+  <div class="msg" id="tstat" style="margin-top:10px">Nothing yet.</div>
+  <pre id="tinfo2" style="white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;max-height:220px;overflow:auto;background:rgba(127,127,127,.08);padding:10px;border-radius:8px;margin:10px 0"></pre>
+  <button class="btn" id="tcopy" type="button" disabled>Copy test info</button>
+</div>
 </main>
 
 <script>
@@ -148,6 +156,47 @@ function setPrev(v){$('prev').disabled=v;$('prev2').disabled=v}
 function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100})}catch(e){ctx=new (window.AudioContext||window.webkitAudioContext)()}}
   if(ctx.state==='suspended')ctx.resume();return ctx}
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+
+/* ---- Test log (only runs on the /test/ page) ---- */
+const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.1';
+const LOG_URL='',LOG_KEY='sp-7Qx2';  // LOG_URL: the Apps Script web app address, once deployed
+let srcInfo={src:'',type:'',kb:''},blobInfo=null,vinfo=null,dev={};
+const r1=x=>Math.round(x*10)/10,r2=x=>Math.round(x*100)/100,yn=b=>b?'Yes':'No',kb=n=>Math.round(n/1024);
+const dB=x=>x>0?r1(20*Math.log10(x)):-99;
+function newId(){const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='SP-';const r=crypto.getRandomValues(new Uint8Array(4));r.forEach(v=>s+=a[v%a.length]);return s}
+async function devInfo(){const n=navigator,ua=n.userAgent;let phone='',browser='';
+  try{if(n.userAgentData){const h=await n.userAgentData.getHighEntropyValues(['model','platformVersion','fullVersionList']);
+    phone=[h.model,n.userAgentData.platform,h.platformVersion].filter(Boolean).join(' ');
+    const b=(h.fullVersionList||[]).find(x=>!/Not|Chromium/i.test(x.brand))||(h.fullVersionList||[])[0];if(b)browser=b.brand+' '+b.version}}catch(e){}
+  if(!phone){const m=ua.match(/\(([^)]+)\)/);phone=m?m[1]:''}
+  if(!browser){const m=ua.match(/(CriOS|FxiOS|EdgA?|SamsungBrowser|Firefox|Chrome|Version)\/([\d.]+)/);browser=m?(m[1]==='Version'?'Safari':m[1])+' '+m[2]:ua.slice(0,60)}
+  dev={'Phone':phone,'Browser':browser,'Screen':screen.width+'x'+screen.height+' @'+(devicePixelRatio||1)+'x','Memory GB':n.deviceMemory||'','CPU Cores':n.hardwareConcurrency||''}}
+function snapAudio(st){const ts=+$('ts').value,te=+$('te').value,du=raw.data.length/raw.sr,ch=id=>$(id).checked,v=id=>+$(id).value,tx=id=>$(id).selectedOptions[0].text;
+  return{'Sound Source':srcInfo.src,'Source File Type':srcInfo.type,'Source File KB':srcInfo.kb,'Raw Length s':r2(du),'Kept Length s':r2(du*(te-ts)/1000),'Trimmed':yn(ts>0||te<1000),
+    'Clipping':yn(raw.clip>20),'Clip Count':raw.clip,'Loudness Before dB':st.before,'Loudness After dB':st.after,'Peak dB':st.peak,
+    'Low Cut':yn(ch('lc')),'Tame Amount':ch('comp')?v('camt'):'Off','Volume dB':ch('volon')?v('vol'):'Off',
+    'Echo':yn(ch('echo')),'Echo Delay':ch('echo')?v('edelay'):'','Echo Repeats':ch('echo')?v('efb'):'','Echo Amount':ch('echo')?v('emix'):'',
+    'Reverb':yn(ch('rev')),'Reverb Type':ch('rev')?tx('room'):'','Reverb Amount':ch('rev')?v('revmix'):'',
+    'Repeat':yn(ch('rep')),'Repeat Times':ch('rep')?v('reps'):'','Octave':yn(ch('octon')),'Octave Dir':ch('octon')?($('oct').value==='up'?'Higher':'Lower'):'','Octave Amount':ch('octon')?v('octmix'):''}}
+function stamp(){const d=new Date(),p=n=>String(n).padStart(2,'0'),o=-d.getTimezoneOffset()/60;
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+' (UTC'+(o>=0?'+':'')+o+')'}
+function logIt(action,type,info,b){if(!TEST||!info)return;
+  const row={'ID':info.ID,'Date/Time':stamp(),'Test Version':TVER,'Action':action,'Type':type,'Tester':$('tname').value.trim(),...dev,...info,'Output KB':b?kb(b.size):''};
+  $('tinfo2').textContent=Object.entries(row).filter(([k,v])=>v!==''&&v!==undefined).map(([k,v])=>k+': '+v).join('\n');$('tcopy').disabled=false;
+  if(!LOG_URL){$('tstat').textContent=info.ID+': the test log isn’t connected yet, so this was not sent. Use Copy test info.';return}
+  try{fetch(LOG_URL,{method:'POST',mode:'no-cors',keepalive:true,headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({_key:LOG_KEY,...row})})
+    .then(()=>$('tstat').textContent=info.ID+': sent to the test log.').catch(()=>$('tstat').textContent=info.ID+': couldn’t send (no internet?). Use Copy test info.')}
+  catch(e){$('tstat').textContent=info.ID+': couldn’t send. Use Copy test info.'}}
+function id3(b,title){if(b.type!=='audio/mpeg')return b;const t=[...title].map(c=>c.charCodeAt(0)&255),fs=t.length+1,ts=10+fs,h=new Uint8Array(10+ts);
+  h.set([73,68,51,3,0,0,(ts>>21)&127,(ts>>14)&127,(ts>>7)&127,ts&127]);h.set([84,73,84,50,(fs>>>24)&255,(fs>>16)&255,(fs>>8)&255,fs&255,0,0,0],10);h.set(t,21);
+  return new Blob([h,b],{type:b.type})}
+if(TEST){$('tbar').hidden=false;$('tbox').hidden=false;$('tver').textContent=TVER;
+  try{$('tname').value=localStorage.getItem('spTester')||''}catch(e){}
+  $('tname').addEventListener('change',()=>{try{localStorage.setItem('spTester',$('tname').value.trim())}catch(e){}});
+  $('tcopy').onclick=async()=>{const t=$('tinfo2').textContent;try{await navigator.clipboard.writeText(t);$('tcopy').textContent='Copied'}catch(e){const r=document.createRange();r.selectNodeContents($('tinfo2'));const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand('copy');$('tcopy').textContent='Copied'}
+    setTimeout(()=>$('tcopy').textContent='Copy test info',1500)};
+  devInfo()}
+const aname=()=>'Soundpost'+(TEST&&blobInfo?' '+blobInfo.ID:'')+'.'+(blob.type==='audio/mpeg'?'mp3':'wav');
 
 function draw(d){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;c.width=w*k;c.height=h*k;
   const g=c.getContext('2d');g.scale(k,k);g.clearRect(0,0,w,h);
@@ -166,7 +215,7 @@ function drawLive(pk){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.
 
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
-  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();setPrev(false);$('share').disabled=false;$('dl').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
+  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();setPrev(false);$('share').disabled=false;$('dl').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;raw.clip=cl;
   msg(cl>20?'Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the instrument helps. Select “Tame harsh notes” below to soften it, but not fully repair it.':'Trim the ends above, choose effects below, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
@@ -181,11 +230,11 @@ async function startRec(){AC();
       const now=performance.now();if(now-last>=40){pk.push(acc);acc=0;last=now;if(pk.length>2000)pk.splice(0,1000);drawLive(pk)}requestAnimationFrame(loop)};requestAnimationFrame(loop)}catch(e){live=null}
   chunks=[];rec=new MediaRecorder(stream);rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
   rec.onstop=async()=>{clearInterval(tick);if(live){try{live.sn.disconnect()}catch(e){}live=null}stream.getTracks().forEach(t=>t.stop());$('rec').classList.remove('on');$('rec').textContent='Rec';
-    await load(await new Blob(chunks,{type:rec.mimeType}).arrayBuffer())};
+    const rb=new Blob(chunks,{type:rec.mimeType});srcInfo={src:'Recorded',type:(rec.mimeType||'').split(';')[0],kb:kb(rb.size)};await load(await rb.arrayBuffer())};
   rec.start();t0=Date.now();$('rec').classList.add('on');$('rec').textContent='Stop';msg('Recording… tap Stop when done (up to 2 minutes).');
   tick=setInterval(()=>{const s=(Date.now()-t0)/1000;$('tm').textContent=fmt(s);if(s>=120)rec.stop()},200)}
 $('rec').onclick=()=>{stopPlay();rec&&rec.state==='recording'?rec.stop():startRec()};
-$('file').onchange=async e=>{const f=e.target.files[0];if(f){msg('Reading '+f.name+'…');AC();await load(await f.arrayBuffer())}};
+$('file').onchange=async e=>{const f=e.target.files[0];if(f){msg('Reading '+f.name+'…');AC();srcInfo={src:'Uploaded file',type:f.type||f.name.split('.').pop(),kb:kb(f.size)};await load(await f.arrayBuffer())}};
 
 
 
@@ -198,7 +247,7 @@ function pitch(d,r,sr){const W=Math.floor(sr*.09),H=W>>1,o=new Float32Array(d.le
 function ir(c,secs,sr){const n=Math.floor(secs*sr),b=c.createBuffer(1,n,sr),x=b.getChannelData(0);
   for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*Math.pow(1-i/n,3);return b}
 
-async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000);let d=raw.data.slice(s0,Math.floor(n*$('te').value/1000)),off=s0;const sr=raw.sr;
+async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000);let d=raw.data.slice(s0,Math.floor(n*$('te').value/1000)),off=s0;const sr=raw.sr;let s0s=0;for(let i=0;i<d.length;i++)s0s+=d[i]*d[i];const before=dB(Math.sqrt(s0s/Math.max(1,d.length)));
   if($('octon').checked){const sh=pitch(d,$('oct').value==='up'?2:.5,sr),m=+$('octmix').value/100,y=new Float32Array(d.length);
     for(let i=0;i<d.length;i++)y[i]=d[i]*(1-.35*m)+sh[i]*m;d=y}
   if($('rep').checked){const n=+$('reps').value,gap=Math.floor(sr*.2),L=d.length+gap,y=new Float32Array(L*n-gap);
@@ -224,7 +273,8 @@ async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/10
   if(pk>0){const gn=Math.min(.7/pk,.12/Math.max(rms,1e-6));for(let i=0;i<y.length;i++)y[i]*=gn}
   const vg=Math.pow(10,($('volon').checked?+$('vol').value:0)/20),sc=v=>Math.abs(v)<.8?v:Math.sign(v)*(.8+.2*Math.tanh((Math.abs(v)-.8)/.2));
   for(let i=0;i<y.length;i++)y[i]=sc(y[i]*vg);
-  return{data:y,sr}}
+  let s2=0,p2=0;for(let i=0;i<y.length;i++){s2+=y[i]*y[i];p2=Math.max(p2,Math.abs(y[i]))}
+  return{data:y,sr,st:{before,after:dB(Math.sqrt(s2/Math.max(1,y.length))),peak:dB(p2)}}}
 
 function wav(y,sr){const b=new ArrayBuffer(44+y.length*2),v=new DataView(b),s=(o,t)=>[...t].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
   s(0,'RIFF');v.setUint32(4,36+y.length*2,true);s(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
@@ -246,6 +296,7 @@ $('player').addEventListener('ended',()=>{if(!busy)stopPlay()});
 const kind=()=>blob&&blob.type!=='audio/mpeg'?'WAV':'MP3';
 async function ready(){if(!raw)return false;if(blob&&!dirty&&out)return true;
   out=await render();draw(out.data);blob=mp3(out.data,out.sr);
+  if(TEST){blobInfo={ID:newId(),...snapAudio(out.st)};blob=id3(blob,'Soundpost '+blobInfo.ID)}
   $('share').textContent='Share '+kind();$('dl').textContent='Download '+kind();
   const old=$('player').src;$('player').src=URL.createObjectURL(blob);$('player').hidden=false;if(old)URL.revokeObjectURL(old);
   dirty=false;return true}
@@ -263,9 +314,9 @@ async function prep(say){if(!raw){say('Record or choose a clip first.');return f
   if(blob&&!dirty)return true;say('Getting your sound ready…');
   try{return await ready()}catch(e){say('Something went wrong applying effects. Try again, or try a shorter clip.');return false}}
 $('share').onclick=async()=>{const had=blob&&!dirty;if(!await prep(msg))return;
-  const f=new File([blob],'Soundpost.'+(blob.type==='audio/mpeg'?'mp3':'wav'),{type:blob.type});
+  const f=new File([blob],aname(),{type:blob.type});
   if(navigator.canShare&&navigator.canShare({files:[f]})){
-    try{await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return;if(!had){msg('Your '+kind()+' is ready. Tap Share '+kind()+' again.');return}}}
+    try{logIt('Share',kind(),blobInfo,blob);await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return;if(!had){msg('Your '+kind()+' is ready. Tap Share '+kind()+' again.');return}}}
   msg('The share sheet isn’t available here. Use Download '+kind()+' instead.')};
 
 function touch(){dirty=true;$('vshare').disabled=true;$('vdl').disabled=true}
@@ -298,36 +349,40 @@ function scene(g,w,h,k){
     for(let i=0;i<28;i++){const ww=w*.2*(1-i/34)*(.7+.3*Math.sin(i*1.7));g.fillStyle='rgba(255,226,170,'+(.55*(1-i/28))+')';g.fillRect(w*.5-ww/2,h*.62+i*h*.012,ww,h*.006)}}}
 let pic={kind:'desert',img:null},vblob=null,vext='mp4';
 const vchg=()=>{if(vblob)vm('Settings changed. Tap Make Video to update your video.')};
-const vname=()=>'Soundpost'+(pic.name?' '+pic.name:'')+'.'+vext;
+const vname=()=>'Soundpost'+(pic.name?' '+pic.name:'')+(TEST&&vinfo?' '+vinfo.ID:'')+'.'+vext;
 function paint(g,w,h){if(pic.img){const im=pic.img,iw=im.naturalWidth||im.width,ih=im.naturalHeight||im.height,sc=Math.max(w/iw,h/ih);g.fillStyle='#000';g.fillRect(0,0,w,h);g.drawImage(im,(w-iw*sc)/2,(h-ih*sc)/2,iw*sc,ih*sc)}else scene(g,w,h,pic.kind)}
 [['desert','Desert sunset'],['forest','Misty forest'],['night','Starry night'],['ocean','Ocean dawn']].forEach(([k,n],i)=>{
   const b=document.createElement('button'),c=document.createElement('canvas');b.type='button';b.title=n;b.setAttribute('aria-label',n);c.width=c.height=96;scene(c.getContext('2d'),96,96,k);b.appendChild(c);
   b.onclick=()=>{pic={kind:k,img:null};vchg();[...$('pics').children].forEach(x=>x.classList.toggle('sel',x===b))};if(i===0)b.classList.add('sel');$('pics').appendChild(b)});
-$('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im,name:f.name.replace(/\.[^.]+$/,'').trim()};[...$('pics').children].forEach(x=>x.classList.remove('sel'));vm(vblob?'Your photo is selected. Tap Make Video to update your video.':'Your photo is selected.')};im.src=URL.createObjectURL(f)};
+$('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im,name:f.name.replace(/\.[^.]+$/,'').trim(),px:im.naturalWidth+'x'+im.naturalHeight,kb:kb(f.size)};[...$('pics').children].forEach(x=>x.classList.remove('sel'));vm(vblob?'Your photo is selected. Tap Make Video to update your video.':'Your photo is selected.')};im.src=URL.createObjectURL(f)};
 ['vshape','vmotion','vamt'].forEach(id=>$(id).addEventListener('change',vchg));
 $('vmake').onclick=async()=>{
-  if(!await prep(vm))return;
+  const tMake=performance.now();if(!await prep(vm))return;
   if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){vm('This browser can’t make video here.');return}
-  stopPlay();$('vmake').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;
+  stopPlay();$('vmake').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;vinfo=null;
+  const vid=newId(),tx=id=>$(id).selectedOptions[0].text,names={desert:'Desert sunset',forest:'Misty forest',night:'Starry night',ocean:'Ocean dawn'};
+  const vset={...snapAudio(out.st),'Picture':pic.img?'Uploaded photo':names[pic.kind],'Photo Pixels':pic.img?pic.px:'','Photo KB':pic.img?pic.kb:'','Shape':tx('vshape'),'Motion':tx('vmotion'),'Motion Speed':tx('vamt')};
   $('vmsg').hidden=false;$('vmsg').scrollIntoView({behavior:'smooth',block:'center'});
   try{const tall=$('vshape').value==='tall',W=tall?540:720,H=tall?960:720,cv=document.createElement('canvas'),bg=document.createElement('canvas');
     const BW=Math.round(W*1.35),BH=Math.round(H*1.35);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';paint(bg.getContext('2d'),BW,BH);
     const mo=$('vmotion').value,Z=1+(+$('vamt').value);
     const view=p=>{const e=p*p*(3-2*p);let z=1,fx=.5,fy=.5;
       if(mo==='zin')z=1+(Z-1)*e;else if(mo==='zout')z=Z-(Z-1)*e;else if(mo!=='still'){z=Z;if(mo==='pr')fx=e;else if(mo==='pl')fx=1-e;else if(mo==='pd')fy=e;else fy=1-e}
-      const sc=W*z/BW,sw=BW/z,sh=BH/z;g.drawImage(bg,-(BW-sw)*fx*sc,-(BH-sh)*fy*sc,BW*sc,BH*sc)};view(0);
+      const sc=W*z/BW,sw=BW/z,sh=BH/z;g.drawImage(bg,-(BW-sw)*fx*sc,-(BH-sh)*fy*sc,BW*sc,BH*sc);
+      if(TEST){g.save();g.font='600 '+Math.round(W/40)+'px system-ui,sans-serif';g.textAlign='right';g.textBaseline='top';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.45)';g.fillStyle='rgba(255,255,255,.8)';g.strokeText(vid,W-12,12);g.fillText(vid,W-12,12);g.restore()}};view(0);
     const c=AC(),dest=c.createMediaStreamDestination(),b=c.createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
     const src=c.createBufferSource();src.buffer=b;src.connect(dest);
     const types=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm'],mt=types.find(t=>MediaRecorder.isTypeSupported(t))||'',dur=out.data.length/out.sr;
     const ms=new MediaStream([...cv.captureStream(30).getVideoTracks(),...dest.stream.getAudioTracks()]),
       mr=new MediaRecorder(ms,mt?{mimeType:mt,videoBitsPerSecond:2500000,audioBitsPerSecond:128000}:{}),parts=[];
     mr.ondataavailable=e=>e.data.size&&parts.push(e.data);
-    const done=new Promise(r=>{mr.onstop=r}),t0=performance.now();let run=true;
-    const fr=()=>{if(!run)return;const p=Math.min(1,(performance.now()-t0)/1000/dur);view(p);g.fillStyle='rgba(255,255,255,.85)';g.fillRect(0,H-8,W*p,8);
+    const done=new Promise(r=>{mr.onstop=r}),t0=performance.now();let run=true,nf=0,late=0,gap=0,lt=0;
+    const fr=()=>{if(!run)return;const now=performance.now();if(lt){const dt=now-lt;if(dt>50)late++;if(dt>gap)gap=dt}lt=now;nf++;const p=Math.min(1,(performance.now()-t0)/1000/dur);view(p);g.fillStyle='rgba(255,255,255,.85)';g.fillRect(0,H-8,W*p,8);
       const pc=Math.round(p*100);vm('Making your video… '+pc+'%. Keep this screen open.');requestAnimationFrame(fr)};
     mr.start(250);src.start();fr();src.onended=()=>setTimeout(()=>{run=false;mr.stop()},300);
     await done;
     const type=(mr.mimeType||mt||'video/webm').split(';')[0];vext=type.includes('mp4')?'mp4':'webm';vblob=new Blob(parts,{type});
+    vinfo={ID:vid,...vset,'Video Format':mr.mimeType||mt||type,'Make Video s':r1((performance.now()-tMake)/1000),'Frames Planned':Math.round(dur*30),'Frames Drawn':nf,'Late Frames':late,'Longest Pause ms':Math.round(gap)};
     const old=$('vplayer').src;$('vplayer').src=URL.createObjectURL(vblob);$('vplayer').hidden=false;if(old)URL.revokeObjectURL(old);
     $('vshare').disabled=false;$('vdl').disabled=false;
     setTimeout(()=>$('vplayer').scrollIntoView({behavior:'smooth',block:'center'}),100);
@@ -335,12 +390,12 @@ $('vmake').onclick=async()=>{
   catch(e){vm('Couldn’t make the video ('+(e.message||e.name||'error')+').')}
   $('vmake').disabled=false};
 $('vshare').onclick=async()=>{if(!vblob)return;const f=new File([vblob],vname(),{type:vblob.type});
-  if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return}}
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{logIt('Share','Video',vinfo,vblob);await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return}}
   vm('The share sheet isn’t available here. Use Download Video instead.')};
 
 function save(b,name){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
-$('dl').onclick=async()=>{if(!await prep(msg))return;save(blob,'Soundpost.'+(blob.type==='audio/mpeg'?'mp3':'wav'))};
-$('vdl').onclick=()=>{if(vblob)save(vblob,vname())};
+$('dl').onclick=async()=>{if(!await prep(msg))return;logIt('Download',kind(),blobInfo,blob);save(blob,aname())};
+$('vdl').onclick=()=>{if(vblob){logIt('Download','Video',vinfo,vblob);save(vblob,vname())}};
 document.querySelectorAll('.fx input,.fx select').forEach(el=>el.addEventListener('input',touch));
 document.querySelectorAll('.fxr.acc').forEach(r=>{const c=r.querySelector('input[type=checkbox]'),f=()=>r.classList.toggle('open',c.checked);c.addEventListener('change',f);f()});
 function fitBig(){const e=document.querySelector('.sec.big');let f=24;e.style.fontSize=f+'px';while(e.scrollWidth>e.clientWidth&&f>10){f-=.25;e.style.fontSize=f+'px'}}
