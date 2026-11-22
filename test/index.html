@@ -158,7 +158,7 @@ function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioConte
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 
 /* ---- Test log (only runs on the /test/ page) ---- */
-const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.1';
+const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.2';
 const LOG_URL='https://script.google.com/macros/s/AKfycby1xBc16mJsY6GnpyNccJCt5RWd7ZnjsNqHxwKO7KsaIu9qmBNrULClPuMBLRKMvJeC-w/exec',LOG_KEY='sp-7Qx2';  // LOG_URL: the Apps Script web app address, once deployed
 let srcInfo={src:'',type:'',kb:''},blobInfo=null,vinfo=null,dev={};
 const r1=x=>Math.round(x*10)/10,r2=x=>Math.round(x*100)/100,yn=b=>b?'Yes':'No',kb=n=>Math.round(n/1024);
@@ -356,33 +356,122 @@ function paint(g,w,h){if(pic.img){const im=pic.img,iw=im.naturalWidth||im.width,
   b.onclick=()=>{pic={kind:k,img:null};vchg();[...$('pics').children].forEach(x=>x.classList.toggle('sel',x===b))};if(i===0)b.classList.add('sel');$('pics').appendChild(b)});
 $('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im,name:f.name.replace(/\.[^.]+$/,'').trim(),px:im.naturalWidth+'x'+im.naturalHeight,kb:kb(f.size)};[...$('pics').children].forEach(x=>x.classList.remove('sel'));vm(vblob?'Your photo is selected. Tap Make Video to update your video.':'Your photo is selected.')};im.src=URL.createObjectURL(f)};
 ['vshape','vmotion','vamt'].forEach(id=>$(id).addEventListener('change',vchg));
+/* ---- Video, WebCodecs way (test V7.2): every frame is drawn at its exact time and encoded,
+   faster than real time, then packed into an MP4 here. If anything is missing or fails,
+   the old way (captureStream + MediaRecorder, below) makes the video instead. ---- */
+const u8=b=>b instanceof ArrayBuffer?new Uint8Array(b.slice(0)):new Uint8Array(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));
+async function wcPick(W,H,sr){
+  if(!window.VideoEncoder||!window.AudioEncoder||!window.VideoFrame||!window.AudioData)return{why:'No WebCodecs'};
+  let v=null,a=null;
+  for(const codec of ['avc1.42E01F','avc1.42001F','avc1.4D401F','avc1.640028']){const c={codec,width:W,height:H,bitrate:2500000,framerate:30,avc:{format:'avc'}};
+    try{if((await VideoEncoder.isConfigSupported(c)).supported){v=c;break}}catch(e){}}
+  if(!v)return{why:'No H.264 encoder'};
+  const acs=['mp4a.40.2'];if(TEST&&/[?&]opus\b/.test(location.search))acs.push('opus');  // ?opus is only for checking the code in a browser without AAC
+  for(const codec of acs){const c={codec,sampleRate:sr,numberOfChannels:1,bitrate:128000};
+    try{if((await AudioEncoder.isConfigSupported(c)).supported){a=c;break}}catch(e){}}
+  if(!a)return{why:'No AAC encoder'};return{v,a}}
+async function wcMake(cfg,cv,view,bar,dur,say){
+  const sr=out.sr,N=Math.max(1,Math.ceil(dur*30)),vs=[],as=[];let vdesc=null,adesc=null,err=null,tEnc=performance.now();
+  const ve=new VideoEncoder({output:(c,md)=>{if(md&&md.decoderConfig&&md.decoderConfig.description)vdesc=u8(md.decoderConfig.description);const d=new Uint8Array(c.byteLength);c.copyTo(d);vs.push({d,ts:c.timestamp,key:c.type==='key'})},error:e=>err=e});
+  const ae=new AudioEncoder({output:(c,md)=>{if(md&&md.decoderConfig&&md.decoderConfig.description)adesc=u8(md.decoderConfig.description);const d=new Uint8Array(c.byteLength);c.copyTo(d);as.push({d,ts:c.timestamp,dur:c.duration})},error:e=>err=e});
+  try{ve.configure(cfg.v);ae.configure(cfg.a);
+    const A=out.data;for(let i=0;i<A.length;i+=sr){const n=Math.min(sr,A.length-i);
+      const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:n,numberOfChannels:1,timestamp:Math.round(i*1e6/sr),data:A.slice(i,i+n)});ae.encode(ad);ad.close()}
+    const flushA=ae.flush();
+    for(let i=0;i<N;i++){if(err)throw err;const p=Math.min(1,i/30/dur);view(p);bar(p);
+      const f=new VideoFrame(cv,{timestamp:Math.round(i*1e6/30),duration:Math.round(1e6/30)});ve.encode(f,{keyFrame:i%60===0});f.close();
+      while(ve.encodeQueueSize>4&&!err)await new Promise(r=>setTimeout(r,2));
+      if(i%15===0){say('Making your video… '+Math.round(i/N*100)+'%. Keep this screen open.');await new Promise(r=>setTimeout(r,0))}}
+    await ve.flush();await flushA;if(err)throw err}
+  finally{try{ve.close()}catch(e){}try{ae.close()}catch(e){}}
+  if(!vdesc)throw new Error('no H.264 setup data');if(!vs.length||!as.length)throw new Error('encoder gave no data');
+  const opus=cfg.a.codec==='opus';
+  if(!adesc&&!opus){const fi=[96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000].indexOf(sr);if(fi<0)throw new Error('odd sample rate');adesc=new Uint8Array([16|fi>>1,(fi&1)<<7|8])}
+  const blob=mp4({w:cv.width,h:cv.height,desc:vdesc,s:vs},{sr,opus,desc:adesc,s:as});
+  return{blob,method:'WebCodecs',fmt:'video/mp4;codecs='+cfg.v.codec+','+cfg.a.codec,nf:N,late:'',gap:'',enc:r1((performance.now()-tEnc)/1000)}}
+/* Small MP4 writer: one H.264 track and one AAC (or Opus) track, interleaved about once a second, index at the front. */
+function mp4(V,Au){
+  const cat=a=>{let n=0;a.forEach(x=>n+=x.length);const o=new Uint8Array(n);let p=0;a.forEach(x=>{o.set(x,p);p+=x.length});return o};
+  const u32=n=>[n>>>24&255,n>>>16&255,n>>>8&255,n&255],u16=n=>[n>>8&255,n&255],tx=s=>[...s].map(c=>c.charCodeAt(0)),z=n=>new Array(n).fill(0);
+  const box=(t,...p)=>{const b=cat(p.map(x=>x instanceof Uint8Array?x:new Uint8Array(x)));return cat([new Uint8Array([...u32(b.length+8),...tx(t)]),b])};
+  const full=(t,v,f,...p)=>box(t,[v,f>>16&255,f>>8&255,f&255],...p);
+  const MX=[...u32(65536),...z(12),...u32(65536),...z(12),...u32(0x40000000)];
+  const stts=d=>{const r=[];d.forEach(x=>{const l=r[r.length-1];if(l&&l[1]===x)l[0]++;else r.push([1,x])});return full('stts',0,0,u32(r.length),...r.map(([c,x])=>[...u32(c),...u32(x)]))};
+  // video timing: 90 kHz clock, decode times = presentation times in order (handles reordered frames too)
+  const VT=90000,pts=V.s.map(s=>Math.round(s.ts*VT/1e6)),dts=[...pts].sort((a,b)=>a-b),vd=dts.map((t,i)=>i<dts.length-1?dts[i+1]-t:3000),off=pts.map((t,i)=>t-dts[i]);
+  const AT=Au.opus?48000:Au.sr,ad=Au.s.map(s=>Au.opus?Math.round((s.dur||20000)*AT/1e6):1024);
+  const vDur=vd.reduce((a,b)=>a+b,0),aDur=ad.reduce((a,b)=>a+b,0),mDur=Math.max(vDur/VT,aDur/AT)*1000|0;
+  // chunks: one second of video, then the audio for that second
+  const ch=[];let vi=0,ai=0,at=0;
+  for(let sec=1;vi<V.s.length||ai<Au.s.length;sec++){const t=sec*VT,v0=vi;while(vi<V.s.length&&dts[vi]<t)vi++;if(vi>v0)ch.push({tr:0,a:v0,b:vi});
+    const a0=ai;while(ai<Au.s.length&&at<sec*AT){at+=ad[ai];ai++}if(ai>a0)ch.push({tr:1,a:a0,b:ai})}
+  const samp=tr=>tr?Au.s:V.s,size=c=>{let n=0;for(let i=c.a;i<c.b;i++)n+=samp(c.tr)[i].d.length;return n};
+  const build=base=>{let pos=base;const off2=[[],[]];ch.forEach(c=>{off2[c.tr].push(pos);pos+=size(c)});
+    const tch=tr=>ch.filter(c=>c.tr===tr);
+    const stbl=(tr,entry,extra)=>{const S=samp(tr),C=tch(tr);
+      return box('stbl',full('stsd',0,0,u32(1),entry),stts(tr?ad:vd),...extra,
+        full('stsc',0,0,u32(C.length),...C.map((c,i)=>[...u32(i+1),...u32(c.b-c.a),...u32(1)])),
+        full('stsz',0,0,u32(0),u32(S.length),...S.map(s=>u32(s.d.length))),
+        full('stco',0,0,u32(C.length),...off2[tr].map(u32)))};
+    const trak=(id,hd,scale,dur,w,h,minfHead,stb)=>box('trak',
+      full('tkhd',0,3,z(8),u32(id),z(4),u32(dur*1000/scale|0),z(8),z(4),u16(id===2?256:0),z(2),MX,u32(w*65536),u32(h*65536)),
+      box('mdia',full('mdhd',0,0,z(8),u32(scale),u32(dur),u16(0x55c4),z(2)),
+        full('hdlr',0,0,z(4),tx(hd),z(12),tx(hd==='vide'?'VideoHandler':'SoundHandler'),[0]),
+        box('minf',minfHead,box('dinf',full('dref',0,0,u32(1),full('url ',0,1))),stb)));
+    const keys=[];V.s.forEach((s,i)=>s.key&&keys.push(i+1));const vx=[full('stss',0,0,u32(keys.length),...keys.map(u32))];
+    if(off.some(x=>x))vx.push(full('ctts',1,0,u32(off.length),...off.map(o=>[...u32(1),...u32(o)])));
+    const avc1=box('avc1',z(6),u16(1),z(16),u16(V.w),u16(V.h),u32(0x480000),u32(0x480000),z(4),u16(1),z(32),u16(24),u16(65535),box('avcC',V.desc));
+    let aent;
+    if(Au.opus){const pre=Au.desc&&Au.desc.length>=12?Au.desc[10]|Au.desc[11]<<8:312;
+      aent=box('Opus',z(6),u16(1),z(8),u16(1),u16(16),z(4),u32(48000*65536),box('dOps',[0,1],u16(pre),u32(Au.sr),z(2),[0]))}
+    else{const asc=[...Au.desc],dec=[0x40,0x15,0,0,0,...u32(128000),...u32(128000),5,asc.length,...asc],es=[0,1,0,4,dec.length,...dec,6,1,2];
+      aent=box('mp4a',z(6),u16(1),z(8),u16(1),u16(16),z(4),u32(Au.sr*65536),full('esds',0,0,[3,es.length,...es]))}
+    return box('moov',full('mvhd',0,0,z(8),u32(1000),u32(mDur),u32(65536),u16(256),z(10),MX,z(24),u32(3)),
+      trak(1,'vide',VT,vDur,V.w,V.h,full('vmhd',0,1,z(8)),stbl(0,avc1,vx)),
+      trak(2,'soun',AT,aDur,0,0,full('smhd',0,0,z(4)),stbl(1,aent,[])))};
+  const ftyp=box('ftyp',tx('isom'),u32(512),tx('isomiso2avc1mp41'));
+  let total=0;ch.forEach(c=>total+=size(c));
+  const len=build(0).length,moov=build(ftyp.length+len+8),parts=[ftyp,moov,new Uint8Array([...u32(total+8),...tx('mdat')])];
+  ch.forEach(c=>{for(let i=c.a;i<c.b;i++)parts.push(samp(c.tr)[i].d)});
+  return new Blob(parts,{type:'video/mp4'})}
+/* ---- Video, old way (fallback): the canvas is filmed in real time while the sound plays. ---- */
+async function recMake(cv,g,view,bar,W,H,dur){
+  const c=AC(),dest=c.createMediaStreamDestination(),b=c.createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
+  const src=c.createBufferSource();src.buffer=b;src.connect(dest);view(0);
+  const types=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm'],mt=types.find(t=>MediaRecorder.isTypeSupported(t))||'';
+  const ms=new MediaStream([...cv.captureStream(30).getVideoTracks(),...dest.stream.getAudioTracks()]),
+    mr=new MediaRecorder(ms,mt?{mimeType:mt,videoBitsPerSecond:2500000,audioBitsPerSecond:128000}:{}),parts=[];
+  mr.ondataavailable=e=>e.data.size&&parts.push(e.data);
+  const done=new Promise(r=>{mr.onstop=r}),t0=performance.now();let run=true,nf=0,late=0,gap=0,lt=0;
+  const fr=()=>{if(!run)return;const now=performance.now();if(lt){const dt=now-lt;if(dt>50)late++;if(dt>gap)gap=dt}lt=now;nf++;const p=Math.min(1,(performance.now()-t0)/1000/dur);view(p);bar(p);
+    vm('Making your video… '+Math.round(p*100)+'%. Keep this screen open.');requestAnimationFrame(fr)};
+  mr.start(250);src.start();fr();src.onended=()=>setTimeout(()=>{run=false;mr.stop()},300);
+  await done;
+  const type=(mr.mimeType||mt||'video/webm').split(';')[0];
+  return{blob:new Blob(parts,{type}),method:'Recorder',fmt:mr.mimeType||mt||type,nf,late,gap:Math.round(gap),enc:''}}
 $('vmake').onclick=async()=>{
   const tMake=performance.now();if(!await prep(vm))return;
-  if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){vm('This browser can’t make video here.');return}
+  const recOK=!!(window.MediaRecorder&&HTMLCanvasElement.prototype.captureStream);
+  if(!window.VideoEncoder&&!recOK){vm('This browser can’t make video here.');return}
   stopPlay();$('vmake').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;vinfo=null;
   const vid=newId(),tx=id=>$(id).selectedOptions[0].text,names={desert:'Desert sunset',forest:'Misty forest',night:'Starry night',ocean:'Ocean dawn'};
   const vset={...snapAudio(out.st),'Picture':pic.img?'Uploaded photo':names[pic.kind],'Photo Pixels':pic.img?pic.px:'','Photo KB':pic.img?pic.kb:'','Shape':tx('vshape'),'Motion':tx('vmotion'),'Motion Speed':tx('vamt')};
   $('vmsg').hidden=false;$('vmsg').scrollIntoView({behavior:'smooth',block:'center'});
   try{const tall=$('vshape').value==='tall',W=tall?540:720,H=tall?960:720,cv=document.createElement('canvas'),bg=document.createElement('canvas');
     const BW=Math.round(W*1.35),BH=Math.round(H*1.35);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';paint(bg.getContext('2d'),BW,BH);
-    const mo=$('vmotion').value,Z=1+(+$('vamt').value);
+    const mo=$('vmotion').value,Z=1+(+$('vamt').value),dur=out.data.length/out.sr;
     const view=p=>{const e=p*p*(3-2*p);let z=1,fx=.5,fy=.5;
       if(mo==='zin')z=1+(Z-1)*e;else if(mo==='zout')z=Z-(Z-1)*e;else if(mo!=='still'){z=Z;if(mo==='pr')fx=e;else if(mo==='pl')fx=1-e;else if(mo==='pd')fy=e;else fy=1-e}
       const sc=W*z/BW,sw=BW/z,sh=BH/z;g.drawImage(bg,-(BW-sw)*fx*sc,-(BH-sh)*fy*sc,BW*sc,BH*sc);
-      if(TEST){g.save();g.font='600 '+Math.round(W/40)+'px system-ui,sans-serif';g.textAlign='right';g.textBaseline='top';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.45)';g.fillStyle='rgba(255,255,255,.8)';g.strokeText(vid,W-12,12);g.fillText(vid,W-12,12);g.restore()}};view(0);
-    const c=AC(),dest=c.createMediaStreamDestination(),b=c.createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
-    const src=c.createBufferSource();src.buffer=b;src.connect(dest);
-    const types=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm'],mt=types.find(t=>MediaRecorder.isTypeSupported(t))||'',dur=out.data.length/out.sr;
-    const ms=new MediaStream([...cv.captureStream(30).getVideoTracks(),...dest.stream.getAudioTracks()]),
-      mr=new MediaRecorder(ms,mt?{mimeType:mt,videoBitsPerSecond:2500000,audioBitsPerSecond:128000}:{}),parts=[];
-    mr.ondataavailable=e=>e.data.size&&parts.push(e.data);
-    const done=new Promise(r=>{mr.onstop=r}),t0=performance.now();let run=true,nf=0,late=0,gap=0,lt=0;
-    const fr=()=>{if(!run)return;const now=performance.now();if(lt){const dt=now-lt;if(dt>50)late++;if(dt>gap)gap=dt}lt=now;nf++;const p=Math.min(1,(performance.now()-t0)/1000/dur);view(p);g.fillStyle='rgba(255,255,255,.85)';g.fillRect(0,H-8,W*p,8);
-      const pc=Math.round(p*100);vm('Making your video… '+pc+'%. Keep this screen open.');requestAnimationFrame(fr)};
-    mr.start(250);src.start();fr();src.onended=()=>setTimeout(()=>{run=false;mr.stop()},300);
-    await done;
-    const type=(mr.mimeType||mt||'video/webm').split(';')[0];vext=type.includes('mp4')?'mp4':'webm';vblob=new Blob(parts,{type});
-    vinfo={ID:vid,...vset,'Video Format':mr.mimeType||mt||type,'Make Video s':r1((performance.now()-tMake)/1000),'Frames Planned':Math.round(dur*30),'Frames Drawn':nf,'Late Frames':late,'Longest Pause ms':Math.round(gap)};
+      if(TEST){g.save();g.font='600 '+Math.round(W/40)+'px system-ui,sans-serif';g.textAlign='right';g.textBaseline='top';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.45)';g.fillStyle='rgba(255,255,255,.8)';g.strokeText(vid,W-12,12);g.fillText(vid,W-12,12);g.restore()}};
+    const bar=p=>{g.fillStyle='rgba(255,255,255,.85)';g.fillRect(0,H-8,W*p,8)};
+    let res=null,why='';
+    try{const cfg=await wcPick(W,H,out.sr);if(cfg.why)why=cfg.why;else res=await wcMake(cfg,cv,view,bar,dur,vm)}
+    catch(e){why='WebCodecs error: '+(e.message||e.name||'unknown');res=null}
+    if(!res){if(!recOK)throw new Error(why);res=await recMake(cv,g,view,bar,W,H,dur)}
+    vext=res.blob.type.includes('mp4')?'mp4':'webm';vblob=res.blob;
+    vinfo={ID:vid,...vset,'Video Method':res.method,'Fallback Reason':why,'Video Format':res.fmt,'Make Video s':r1((performance.now()-tMake)/1000),'Encode s':res.enc,
+      'Frames Planned':Math.round(dur*30),'Frames Drawn':res.nf,'Late Frames':res.late,'Longest Pause ms':res.gap};
     const old=$('vplayer').src;$('vplayer').src=URL.createObjectURL(vblob);$('vplayer').hidden=false;if(old)URL.revokeObjectURL(old);
     $('vshare').disabled=false;$('vdl').disabled=false;
     setTimeout(()=>$('vplayer').scrollIntoView({behavior:'smooth',block:'center'}),100);
