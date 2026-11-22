@@ -158,7 +158,7 @@ function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioConte
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 
 /* ---- Test log (only runs on the /test/ page) ---- */
-const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.2';
+const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.3';
 const LOG_URL='https://script.google.com/macros/s/AKfycby1xBc16mJsY6GnpyNccJCt5RWd7ZnjsNqHxwKO7KsaIu9qmBNrULClPuMBLRKMvJeC-w/exec',LOG_KEY='sp-7Qx2';  // LOG_URL: the Apps Script web app address, once deployed
 let srcInfo={src:'',type:'',kb:''},blobInfo=null,vinfo=null,dev={};
 const r1=x=>Math.round(x*10)/10,r2=x=>Math.round(x*100)/100,yn=b=>b?'Yes':'No',kb=n=>Math.round(n/1024);
@@ -370,10 +370,13 @@ async function wcPick(W,H,sr){
   for(const codec of acs){const c={codec,sampleRate:sr,numberOfChannels:1,bitrate:128000};
     try{if((await AudioEncoder.isConfigSupported(c)).supported){a=c;break}}catch(e){}}
   if(!a)return{why:'No AAC encoder'};return{v,a}}
+let wcDiag=null;
 async function wcMake(cfg,cv,view,bar,dur,say){
+  wcDiag=null;
   const sr=out.sr,N=Math.max(1,Math.ceil(dur*30)),vs=[],as=[];let vdesc=null,adesc=null,err=null,tEnc=performance.now();
   const ve=new VideoEncoder({output:(c,md)=>{if(md&&md.decoderConfig&&md.decoderConfig.description)vdesc=u8(md.decoderConfig.description);const d=new Uint8Array(c.byteLength);c.copyTo(d);vs.push({d,ts:c.timestamp,key:c.type==='key'})},error:e=>err=e});
-  const ae=new AudioEncoder({output:(c,md)=>{if(md&&md.decoderConfig&&md.decoderConfig.description)adesc=u8(md.decoderConfig.description);const d=new Uint8Array(c.byteLength);c.copyTo(d);as.push({d,ts:c.timestamp,dur:c.duration})},error:e=>err=e});
+  let adts=0;const ae=new AudioEncoder({output:(c,md)=>{if(md&&md.decoderConfig&&md.decoderConfig.description)adesc=u8(md.decoderConfig.description);let d=new Uint8Array(c.byteLength);c.copyTo(d);
+    if(d.length>7&&d[0]===255&&(d[1]&246)===240){const h=d[1]&1?7:9;d=d.slice(h);adts++}as.push({d,ts:c.timestamp,dur:c.duration})},error:e=>err=e});
   try{ve.configure(cfg.v);ae.configure(cfg.a);
     const A=out.data;for(let i=0;i<A.length;i+=sr){const n=Math.min(sr,A.length-i);
       const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:n,numberOfChannels:1,timestamp:Math.round(i*1e6/sr),data:A.slice(i,i+n)});ae.encode(ad);ad.close()}
@@ -386,9 +389,23 @@ async function wcMake(cfg,cv,view,bar,dur,say){
   finally{try{ve.close()}catch(e){}try{ae.close()}catch(e){}}
   if(!vdesc)throw new Error('no H.264 setup data');if(!vs.length||!as.length)throw new Error('encoder gave no data');
   const opus=cfg.a.codec==='opus';
-  if(!adesc&&!opus){const fi=[96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000].indexOf(sr);if(fi<0)throw new Error('odd sample rate');adesc=new Uint8Array([16|fi>>1,(fi&1)<<7|8])}
-  const blob=mp4({w:cv.width,h:cv.height,desc:vdesc,s:vs},{sr,opus,desc:adesc,s:as});
-  return{blob,method:'WebCodecs',fmt:'video/mp4;codecs='+cfg.v.codec+','+cfg.a.codec,nf:N,late:'',gap:'',enc:r1((performance.now()-tEnc)/1000)}}
+  const hex=b=>b?[...b.slice(0,12)].map(x=>x.toString(16).padStart(2,'0')).join(' ')+(b.length>12?' …('+b.length+')':''):'none';
+  const aInfo=wcDiag={'AAC Setup':opus?'':hex(adesc)+(adts?' | ADTS stripped':''),'Audio Chunks':as.length};
+  let asc=adesc;
+  if(!opus){// AAC-LC mono: write the 2-byte setup ourselves (some encoders hand back other data here)
+    const fi=[96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000].indexOf(sr);if(fi<0)throw new Error('odd sample rate');asc=new Uint8Array([16|fi>>1,(fi&1)<<7|8])}
+  const aDur=as.length*(opus?0.02:1024/sr);if(aDur<dur*0.9)throw new Error('audio too short ('+r1(aDur)+' of '+r1(dur)+' s)');
+  if(!opus)await audioCheck(as,sr,asc);aInfo['Audio Check']='OK';
+  const blob=mp4({w:cv.width,h:cv.height,desc:vdesc,s:vs},{sr,opus,desc:asc,s:as});
+  return{blob,method:'WebCodecs',fmt:'video/mp4;codecs='+cfg.v.codec+','+cfg.a.codec,nf:N,late:'',gap:'',enc:r1((performance.now()-tEnc)/1000),aInfo}}
+/* Decode the first second of AAC with the exact setup going into the file; if it won't decode, use the old way instead of making a silent video. */
+async function audioCheck(as,sr,asc){
+  if(!window.AudioDecoder)return;const cfg={codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:1,description:asc};
+  try{if(!(await AudioDecoder.isConfigSupported(cfg)).supported)return}catch(e){return}
+  let got=0,bad=null;const dec=new AudioDecoder({output:a=>{got+=a.numberOfFrames;a.close()},error:e=>bad=e});
+  try{dec.configure(cfg);let t=0;for(const c of as.slice(0,45)){dec.decode(new EncodedAudioChunk({type:'key',timestamp:Math.round(t*1e6/sr),data:c.d}));t+=1024}await dec.flush()}
+  catch(e){bad=bad||e}finally{try{dec.close()}catch(e){}}
+  if(bad||!got)throw new Error('audio check failed: '+(bad?(bad.message||bad.name):'no sound decoded'))}
 /* Small MP4 writer: one H.264 track and one AAC (or Opus) track, interleaved about once a second, index at the front. */
 function mp4(V,Au){
   const cat=a=>{let n=0;a.forEach(x=>n+=x.length);const o=new Uint8Array(n);let p=0;a.forEach(x=>{o.set(x,p);p+=x.length});return o};
@@ -468,9 +485,10 @@ $('vmake').onclick=async()=>{
     let res=null,why='';
     try{const cfg=await wcPick(W,H,out.sr);if(cfg.why)why=cfg.why;else res=await wcMake(cfg,cv,view,bar,dur,vm)}
     catch(e){why='WebCodecs error: '+(e.message||e.name||'unknown');res=null}
+    const aInfo=res&&res.aInfo||wcDiag||{};
     if(!res){if(!recOK)throw new Error(why);res=await recMake(cv,g,view,bar,W,H,dur)}
     vext=res.blob.type.includes('mp4')?'mp4':'webm';vblob=res.blob;
-    vinfo={ID:vid,...vset,'Video Method':res.method,'Fallback Reason':why,'Video Format':res.fmt,'Make Video s':r1((performance.now()-tMake)/1000),'Encode s':res.enc,
+    vinfo={ID:vid,...vset,'Video Method':res.method,'Fallback Reason':why,'Video Format':res.fmt,'Make Video s':r1((performance.now()-tMake)/1000),'Encode s':res.enc,...aInfo,
       'Frames Planned':Math.round(dur*30),'Frames Drawn':res.nf,'Late Frames':res.late,'Longest Pause ms':res.gap};
     const old=$('vplayer').src;$('vplayer').src=URL.createObjectURL(vblob);$('vplayer').hidden=false;if(old)URL.revokeObjectURL(old);
     $('vshare').disabled=false;$('vdl').disabled=false;
