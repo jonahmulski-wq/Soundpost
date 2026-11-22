@@ -158,7 +158,7 @@ function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioConte
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 
 /* ---- Test log (only runs on the /test/ page) ---- */
-const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.3';
+const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.4';
 const LOG_URL='https://script.google.com/macros/s/AKfycby1xBc16mJsY6GnpyNccJCt5RWd7ZnjsNqHxwKO7KsaIu9qmBNrULClPuMBLRKMvJeC-w/exec',LOG_KEY='sp-7Qx2';  // LOG_URL: the Apps Script web app address, once deployed
 let srcInfo={src:'',type:'',kb:''},blobInfo=null,vinfo=null,dev={};
 const r1=x=>Math.round(x*10)/10,r2=x=>Math.round(x*100)/100,yn=b=>b?'Yes':'No',kb=n=>Math.round(n/1024);
@@ -356,6 +356,23 @@ function paint(g,w,h){if(pic.img){const im=pic.img,iw=im.naturalWidth||im.width,
   b.onclick=()=>{pic={kind:k,img:null};vchg();[...$('pics').children].forEach(x=>x.classList.toggle('sel',x===b))};if(i===0)b.classList.add('sel');$('pics').appendChild(b)});
 $('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im,name:f.name.replace(/\.[^.]+$/,'').trim(),px:im.naturalWidth+'x'+im.naturalHeight,kb:kb(f.size)};[...$('pics').children].forEach(x=>x.classList.remove('sel'));vm(vblob?'Your photo is selected. Tap Make Video to update your video.':'Your photo is selected.')};im.src=URL.createObjectURL(f)};
 ['vshape','vmotion','vamt'].forEach(id=>$(id).addEventListener('change',vchg));
+/* ---- Video motion (test V7.4): the zoom/pan is drawn with WebGL so the picture can move by fractions of a pixel.
+   iPhone's 2D canvas snaps it to whole pixels, so slow motion moved in visible 1-pixel steps. Returns null if WebGL isn't available. ---- */
+function glMover(src,W,H){
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const gl=c.getContext('webgl',{alpha:false,antialias:false,preserveDrawingBuffer:true});if(!gl)return null;
+  const sh=(t,code)=>{const x=gl.createShader(t);gl.shaderSource(x,code);gl.compileShader(x);return x},pr=gl.createProgram();
+  gl.attachShader(pr,sh(gl.VERTEX_SHADER,'attribute vec2 a;varying vec2 v;void main(){v=vec2(a.x*.5+.5,.5-a.y*.5);gl_Position=vec4(a,0.,1.);}'));
+  gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,'precision highp float;varying vec2 v;uniform sampler2D t;uniform vec3 r;void main(){gl_FragColor=texture2D(t,r.xy+v*r.z);}'));
+  gl.linkProgram(pr);if(!gl.getProgramParameter(pr,gl.LINK_STATUS))return null;gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const a=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);
+  gl.bindTexture(gl.TEXTURE_2D,gl.createTexture());gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src);
+  [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]].forEach(([k,v])=>gl.texParameteri(gl.TEXTURE_2D,k,v));
+  const r=gl.getUniformLocation(pr,'r');gl.viewport(0,0,W,H);if(gl.getError())return null;
+  return{canvas:c,
+    draw(z,fx,fy){const k=1-1/z;gl.uniform3f(r,k*fx,k*fy,1/z);gl.drawArrays(gl.TRIANGLE_STRIP,0,4)},  // shows the part of the picture the zoom/pan points at
+    free(){const x=gl.getExtension('WEBGL_lose_context');if(x)x.loseContext()}}}  // phones allow only a few WebGL canvases, so give it back
 /* ---- Video, WebCodecs way (test V7.2): every frame is drawn at its exact time and encoded,
    faster than real time, then packed into an MP4 here. If anything is missing or fails,
    the old way (captureStream + MediaRecorder, below) makes the video instead. ---- */
@@ -474,12 +491,14 @@ $('vmake').onclick=async()=>{
   const vid=newId(),tx=id=>$(id).selectedOptions[0].text,names={desert:'Desert sunset',forest:'Misty forest',night:'Starry night',ocean:'Ocean dawn'};
   const vset={...snapAudio(out.st),'Picture':pic.img?'Uploaded photo':names[pic.kind],'Photo Pixels':pic.img?pic.px:'','Photo KB':pic.img?pic.kb:'','Shape':tx('vshape'),'Motion':tx('vmotion'),'Motion Speed':tx('vamt')};
   $('vmsg').hidden=false;$('vmsg').scrollIntoView({behavior:'smooth',block:'center'});
+  let mv=null;
   try{const tall=$('vshape').value==='tall',W=tall?540:720,H=tall?960:720,cv=document.createElement('canvas'),bg=document.createElement('canvas');
     const BW=Math.round(W*1.35),BH=Math.round(H*1.35);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';paint(bg.getContext('2d'),BW,BH);
     const mo=$('vmotion').value,Z=1+(+$('vamt').value),dur=out.data.length/out.sr;
+    try{mv=glMover(bg,W,H)}catch(e){mv=null}
     const view=p=>{const e=p*p*(3-2*p);let z=1,fx=.5,fy=.5;
       if(mo==='zin')z=1+(Z-1)*e;else if(mo==='zout')z=Z-(Z-1)*e;else if(mo!=='still'){z=Z;if(mo==='pr')fx=e;else if(mo==='pl')fx=1-e;else if(mo==='pd')fy=e;else fy=1-e}
-      const sc=W*z/BW,sw=BW/z,sh=BH/z;g.drawImage(bg,-(BW-sw)*fx*sc,-(BH-sh)*fy*sc,BW*sc,BH*sc);
+      if(mv){mv.draw(z,fx,fy);g.drawImage(mv.canvas,0,0)}else{const sc=W*z/BW,sw=BW/z,sh=BH/z;g.drawImage(bg,-(BW-sw)*fx*sc,-(BH-sh)*fy*sc,BW*sc,BH*sc)}
       if(TEST){g.save();g.font='600 '+Math.round(W/40)+'px system-ui,sans-serif';g.textAlign='right';g.textBaseline='top';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.45)';g.fillStyle='rgba(255,255,255,.8)';g.strokeText(vid,W-12,12);g.fillText(vid,W-12,12);g.restore()}};
     const bar=p=>{g.fillStyle='rgba(255,255,255,.85)';g.fillRect(0,H-8,W*p,8)};
     let res=null,why='';
@@ -488,13 +507,14 @@ $('vmake').onclick=async()=>{
     const aInfo=res&&res.aInfo||wcDiag||{};
     if(!res){if(!recOK)throw new Error(why);res=await recMake(cv,g,view,bar,W,H,dur)}
     vext=res.blob.type.includes('mp4')?'mp4':'webm';vblob=res.blob;
-    vinfo={ID:vid,...vset,'Video Method':res.method,'Fallback Reason':why,'Video Format':res.fmt,'Make Video s':r1((performance.now()-tMake)/1000),'Encode s':res.enc,...aInfo,
+    vinfo={ID:vid,...vset,'Video Method':res.method,'Fallback Reason':why,'Video Format':res.fmt,'Make Video s':r1((performance.now()-tMake)/1000),'Encode s':res.enc,'Motion Draw':mv?'WebGL':'Canvas',...aInfo,
       'Frames Planned':Math.round(dur*30),'Frames Drawn':res.nf,'Late Frames':res.late,'Longest Pause ms':res.gap};
     const old=$('vplayer').src;$('vplayer').src=URL.createObjectURL(vblob);$('vplayer').hidden=false;if(old)URL.revokeObjectURL(old);
     $('vshare').disabled=false;$('vdl').disabled=false;
     setTimeout(()=>$('vplayer').scrollIntoView({behavior:'smooth',block:'center'}),100);
     vm(vext==='mp4'?'Your video is ready. Tap Share Video.':'Your video is ready, but this browser made a WebM file. Instagram usually needs MP4, so try Chrome on a newer phone or Safari on iPhone.')}
   catch(e){vm('Couldn’t make the video ('+(e.message||e.name||'error')+').')}
+  if(mv)mv.free();
   $('vmake').disabled=false};
 $('vshare').onclick=async()=>{if(!vblob)return;const f=new File([vblob],vname(),{type:vblob.type});
   if(navigator.canShare&&navigator.canShare({files:[f]})){try{logIt('Share','Video',vinfo,vblob);await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return}}
