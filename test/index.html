@@ -162,7 +162,7 @@ function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioConte
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 
 /* ---- Test log (only runs on the /test/ page) ---- */
-const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.5';
+const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.6';
 const LOG_URL='https://script.google.com/macros/s/AKfycby1xBc16mJsY6GnpyNccJCt5RWd7ZnjsNqHxwKO7KsaIu9qmBNrULClPuMBLRKMvJeC-w/exec',LOG_KEY='sp-7Qx2';  // LOG_URL: the Apps Script web app address, once deployed
 let srcInfo={src:'',type:'',kb:''},blobInfo=null,vinfo=null,dev={};
 const r1=x=>Math.round(x*10)/10,r2=x=>Math.round(x*100)/100,yn=b=>b?'Yes':'No',kb=n=>Math.round(n/1024);
@@ -297,6 +297,15 @@ const playMsg=()=>msg(blob.type==='audio/mpeg'?'Playing… Ready to share it? Sc
 $('player').addEventListener('play',async()=>{const p=$('player');canStop(true);
   if(dirty&&raw&&!busy){busy=true;p.pause();msg('Applying effects…');try{await ready();p.currentTime=0;await p.play();playMsg()}catch(e){msg('Something went wrong applying effects. Try again, or try a shorter clip.')}busy=false}});
 $('player').addEventListener('ended',()=>{if(!busy)stopPlay()});
+/* red line in the trim box follows Preview playback (maps output time back to the kept part of the recording) */
+let pvRaf=0;
+function pvLoop(){const p=$('player');if(p.paused||p.ended||!raw||live){pvEnd();return}
+  const du=tDur(),a=du*$('ts').value/1000,K=du*($('te').value-$('ts').value)/1000;let t=p.currentTime;
+  if($('rep').checked)t=t%(K+.2);
+  T.play=a+Math.min(K,t);drawTrim();pvRaf=requestAnimationFrame(pvLoop)}
+function pvEnd(){cancelAnimationFrame(pvRaf);pvRaf=0;if(T.src)return;T.play=null;if(raw&&!live)drawTrim()}
+$('player').addEventListener('playing',()=>{if(!pvRaf&&raw&&!live&&!T.src)pvRaf=requestAnimationFrame(pvLoop)});
+$('player').addEventListener('pause',pvEnd);$('player').addEventListener('ended',pvEnd);
 const kind=()=>blob&&blob.type!=='audio/mpeg'?'WAV':'MP3';
 async function ready(){if(!raw)return false;if(blob&&!dirty&&out)return true;
   out=await render();if(!raw)draw(out.data);blob=mp3(out.data,out.sr);
