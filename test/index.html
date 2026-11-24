@@ -17,6 +17,9 @@ main{max-width:480px;margin:0 auto;padding:20px 18px 40px}
 h1{font:500 30px/1.1 Fraunces,Georgia,serif;margin:8px 0 4px}
 .sub{color:var(--mute);margin:0 0 18px}
 .wave{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
+#cv.trim{touch-action:none;cursor:ew-resize}
+#mag{position:fixed;z-index:20;width:150px;height:64px;border:2px solid var(--acc);border-radius:10px;background:var(--panel);box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}
+#mag[hidden]{display:none}
 canvas{display:block;width:100%;height:110px}
 .row{display:flex;gap:10px;align-items:center;justify-content:center;margin:16px 0;flex-wrap:wrap}
 button,select{font:inherit;color:inherit}
@@ -74,8 +77,10 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
 
 <div class="wave"><canvas id="cv"></canvas></div>
 <div class="fxr" id="trimbox" hidden style="border-top:0;padding-top:8px"><label class="t">Trim the recording (gray parts get cut)</label>
-    <div class="ctl"><span>Start</span><input type="range" id="ts" min="0" max="1000" value="0"><span>End</span><input type="range" id="te" min="0" max="1000" value="1000"></div>
-    <div class="ctl" style="display:block" id="tinfo"></div></div>
+    <input type="hidden" id="ts" value="0"><input type="hidden" id="te" value="1000">
+    <div class="ctl" style="display:block;margin-left:0">Drag the two handles on the waveform. Hold still for a moment to zoom in and fine tune.</div>
+    <div class="ctl" style="display:flex;justify-content:space-between;gap:10px;margin-left:0"><span id="tinfo"></span><button class="btn" id="hearcut" type="button" style="padding:7px 13px;font-size:14px;white-space:nowrap">▶ hear the cut</button></div></div>
+<canvas id="mag" hidden></canvas>
 <div class="msg" id="msg" role="status">Page loaded. Tap Rec to start.</div>
 <div class="row top">
   <div class="grp"><span class="time" id="tm">0:00</span>
@@ -129,8 +134,7 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
     <div class="ctl" style="display:block"><label>Upload Photo: <input type="file" id="pimg" accept="image/*"></label></div>
     <div class="step">2. Adjust Video Settings</div>
     <div class="ctl"><span>Shape</span><select id="vshape"><option value="sq">Square</option><option value="tall">Tall (Stories, Reels)</option></select></div>
-    <div class="ctl"><span>Motion</span><select id="vmotion"><option value="zin" selected>Zoom in</option><option value="zout">Zoom out</option><option value="pl">Pan left</option><option value="pr">Pan right</option><option value="pu">Pan up</option><option value="pd">Pan down</option><option value="still">Still</option></select>
-    <span>Motion Speed</span><select id="vamt"><option value="0.1">Slow</option><option value="0.2" selected>Medium</option><option value="0.35">Fast</option></select></div>
+    <div class="ctl"><span>Motion</span><select id="vmotion"><option value="zin" selected>Zoom in</option><option value="zout">Zoom out</option><option value="pl">Pan left</option><option value="pr">Pan right</option><option value="pu">Pan up</option><option value="pd">Pan down</option><option value="still">Still</option></select></div>
     <div class="steps">
       <div><div class="step">3. Make Video</div><button class="btn main" id="vmake" type="button">Make Video</button></div>
       <div><div class="step">4. Share or Download</div><div class="vbtns"><button class="btn" id="vshare" type="button" disabled>Share Video</button><button class="btn" id="vdl" type="button" disabled>Download Video</button></div></div>
@@ -158,7 +162,7 @@ function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioConte
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 
 /* ---- Test log (only runs on the /test/ page) ---- */
-const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.4';
+const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.5';
 const LOG_URL='https://script.google.com/macros/s/AKfycby1xBc16mJsY6GnpyNccJCt5RWd7ZnjsNqHxwKO7KsaIu9qmBNrULClPuMBLRKMvJeC-w/exec',LOG_KEY='sp-7Qx2';  // LOG_URL: the Apps Script web app address, once deployed
 let srcInfo={src:'',type:'',kb:''},blobInfo=null,vinfo=null,dev={};
 const r1=x=>Math.round(x*10)/10,r2=x=>Math.round(x*100)/100,yn=b=>b?'Yes':'No',kb=n=>Math.round(n/1024);
@@ -215,7 +219,7 @@ function drawLive(pk){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.
 
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
-  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();setPrev(false);$('share').disabled=false;$('dl').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;raw.clip=cl;
+  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;trimReset();updTrim();setPrev(false);$('share').disabled=false;$('dl').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;raw.clip=cl;
   msg(cl>20?'Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the instrument helps. Select “Tame harsh notes” below to soften it, but not fully repair it.':'Trim the ends above, choose effects below, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
@@ -286,7 +290,7 @@ function mp3(y,sr){if(!window.lamejs)return wav(y,sr);
     for(let i=0;i<p.length;i+=1152){const c=enc.encodeBuffer(p.subarray(i,i+1152));if(c.length)parts.push(c)}
     const e=enc.flush();if(e.length)parts.push(e);return new Blob(parts,{type:'audio/mpeg'})}catch(e){return wav(y,sr)}}
 
-function stopPlay(){const p=$('player');try{p.pause();p.currentTime=0}catch(e){}$('stop').disabled=true;$('stop2').disabled=true}
+function stopPlay(){if(T.src)hearStop();const p=$('player');try{p.pause();p.currentTime=0}catch(e){}$('stop').disabled=true;$('stop2').disabled=true}
 function canStop(v){$('stop').disabled=!v;$('stop2').disabled=!v}
 let busy=false;
 const playMsg=()=>msg(blob.type==='audio/mpeg'?'Playing… Ready to share it? Scroll down to “Share Soundpost audio or video.”':'Playing… MP3 encoder didn’t load. Download a .wav file.');
@@ -295,7 +299,7 @@ $('player').addEventListener('play',async()=>{const p=$('player');canStop(true);
 $('player').addEventListener('ended',()=>{if(!busy)stopPlay()});
 const kind=()=>blob&&blob.type!=='audio/mpeg'?'WAV':'MP3';
 async function ready(){if(!raw)return false;if(blob&&!dirty&&out)return true;
-  out=await render();draw(out.data);blob=mp3(out.data,out.sr);
+  out=await render();if(!raw)draw(out.data);blob=mp3(out.data,out.sr);
   if(TEST){blobInfo={ID:newId(),...snapAudio(out.st)};blob=id3(blob,'Soundpost '+blobInfo.ID)}
   $('share').textContent='Share '+kind();$('dl').textContent='Download '+kind();
   const old=$('player').src;$('player').src=URL.createObjectURL(blob);$('player').hidden=false;if(old)URL.revokeObjectURL(old);
@@ -320,13 +324,67 @@ $('share').onclick=async()=>{const had=blob&&!dirty;if(!await prep(msg))return;
   msg('The share sheet isn’t available here. Use Download '+kind()+' instead.')};
 
 function touch(){dirty=true;$('vshare').disabled=true;$('vdl').disabled=true}
-function updTrim(){if(!raw)return;let a=+$('ts').value,b=+$('te').value;
-  if(document.activeElement===$('ts')){a=Math.min(a,b-10);$('ts').value=a}else{b=Math.max(b,a+10);$('te').value=b}
-  draw(raw.data);const c=$('cv'),g=c.getContext('2d'),w=c.clientWidth,h=c.clientHeight;
-  g.fillStyle='rgba(120,120,120,.6)';g.fillRect(0,0,w*a/1000,h);g.fillRect(w*b/1000,0,w-w*b/1000,h);
-  const du=raw.data.length/raw.sr;$('tinfo').textContent='Keeping '+(du*a/1000).toFixed(1)+'s to '+(du*b/1000).toFixed(1)+'s of '+du.toFixed(1)+'s';touch()}
-function zoomTrim(){if(!raw)return;const n=raw.data.length;draw(raw.data.subarray(Math.floor(n*$('ts').value/1000),Math.floor(n*$('te').value/1000)))}
-['ts','te'].forEach(id=>{const el=$(id);el.addEventListener('input',updTrim);el.addEventListener('pointerdown',updTrim);el.addEventListener('change',zoomTrim)});
+/* ---- Trim: two handles on the waveform (values stay in ts/te, 0-1000) ---- */
+const T={act:'s',drag:null,fine:null,timer:0,pk:null,pkw:0,src:null,play:null};
+const tDur=()=>raw.data.length/raw.sr;
+const fineSpan=()=>Math.min(2,tDur()*.4);
+function tView(){return T.fine!==null?{a:T.fine,span:fineSpan()}:{a:0,span:tDur()}}
+function tGap(){return Math.min(10,100/tDur())}  // keep at least 0.1 s (or 1% of short clips)
+function peaksFor(a,span,w){const d=raw.data,sr=raw.sr,p=new Float32Array(w);
+  for(let x=0;x<w;x++){const i0=Math.max(0,Math.floor((a+x/w*span)*sr)),i1=Math.min(d.length,Math.floor((a+(x+1)/w*span)*sr));let m=0;
+    for(let i=i0;i<i1;i++){const v=d[i]<0?-d[i]:d[i];if(v>m)m=v}p[x]=m}return p}
+function wavePeaks(v,w){if(v.a===0&&v.span===tDur()){if(!T.pk||T.pkw!==w){T.pk=peaksFor(0,v.span,w);T.pkw=w}return T.pk}return peaksFor(v.a,v.span,w)}
+function paintTrim(c,w,h,v,opt){const k=devicePixelRatio||1;if(c.width!==Math.round(w*k)||c.height!==Math.round(h*k)){c.width=Math.round(w*k);c.height=Math.round(h*k)}
+  const g=c.getContext('2d');g.setTransform(k,0,0,k,0,0);g.clearRect(0,0,w,h);
+  const cs=getComputedStyle(document.documentElement),acc=cs.getPropertyValue('--acc'),ink=cs.getPropertyValue('--ink'),red=cs.getPropertyValue('--rec');
+  const p=opt.mag?peaksFor(v.a,v.span,w):wavePeaks(v,w),du=tDur(),X=t=>(t-v.a)/v.span*w;
+  g.fillStyle=acc;for(let x=0;x<w;x++){const t=v.a+x/w*v.span;if(t<0||t>du)continue;const bh=Math.max(1,p[x]*h*.95);g.fillRect(x,(h-bh)/2,1,bh)}
+  const xs=X(du*$('ts').value/1000),xe=X(du*$('te').value/1000);
+  g.fillStyle='rgba(120,120,120,.6)';if(xs>0)g.fillRect(0,0,Math.min(w,xs),h);if(xe<w)g.fillRect(Math.max(0,xe),0,w-Math.max(0,xe),h);
+  [['s',xs],['e',xe]].forEach(([id,x])=>{if(x<-20||x>w+20)return;const on=id===T.act;
+    g.globalAlpha=on?1:.65;g.fillStyle=on?ink:ink;g.fillRect(x-(on?1.5:1),0,on?3:2,h);
+    if(!opt.mag){const kw=14,kh=30,kx=id==='s'?x:x-kw;g.fillStyle=on?ink:ink;g.beginPath();
+      if(g.roundRect)g.roundRect(kx,(h-kh)/2,kw,kh,4);else g.rect(kx,(h-kh)/2,kw,kh);g.fill();
+      g.fillStyle=cs.getPropertyValue('--panel');g.fillRect(kx+5,(h-12)/2,1.5,12);g.fillRect(kx+8,(h-12)/2,1.5,12)}
+    g.globalAlpha=1});
+  if(T.play!==null){const x=X(T.play);g.fillStyle=red;g.fillRect(x-1,0,2,h)}
+  if(opt.label){g.font='600 12px Figtree,system-ui,sans-serif';const tw=g.measureText(opt.label).width;
+    g.fillStyle='rgba(0,0,0,.6)';g.fillRect(4,4,tw+12,20);g.fillStyle='#fff';g.fillText(opt.label,10,18)}}
+function drawTrim(){if(!raw||live)return;const c=$('cv');paintTrim(c,c.clientWidth,c.clientHeight,tView(),{label:T.fine!==null?'Fine tuning':''})}
+function showMag(cx){const m=$('mag'),r=$('cv').getBoundingClientRect(),v=tView(),t=tDur()*$(T.act==='s'?'ts':'te').value/1000,sp=Math.max(.02,v.span/6);
+  m.hidden=false;m.style.left=Math.max(4,Math.min(innerWidth-154,cx-75))+'px';m.style.top=Math.max(4,r.top-74)+'px';
+  paintTrim(m,150,64,{a:t-sp/2,span:sp},{mag:true})}
+function trimText(){const du=tDur(),a=du*$('ts').value/1000,b=du*$('te').value/1000;
+  $('tinfo').textContent='Keeping '+a.toFixed(2)+'s to '+b.toFixed(2)+'s of '+du.toFixed(1)+'s'}
+function updTrim(){if(!raw)return;drawTrim();trimText();touch()}
+function trimReset(){hearStop();T.pk=null;T.act='s';T.fine=null;T.drag=null;$('cv').classList.add('trim')}
+function setHandle(h,pm){const g=tGap(),s=+$('ts').value,e=+$('te').value;
+  pm=h==='s'?Math.max(0,Math.min(pm,e-g)):Math.min(1000,Math.max(pm,s+g));$(h==='s'?'ts':'te').value=Math.round(pm*1000)/1000}
+function holdTimer(){clearTimeout(T.timer);if(T.fine!==null)return;
+  T.timer=setTimeout(()=>{const d=T.drag;if(!d||fineSpan()>=tDur()*.9)return;const w=$('cv').clientWidth,t=tDur()*$(d.h==='s'?'ts':'te').value/1000;
+    T.fine=t-(d.x+d.off)/w*fineSpan();drawTrim();showMag(d.cx)},500)}
+const cvx=e=>e.clientX-$('cv').getBoundingClientRect().left;
+$('cv').addEventListener('pointerdown',e=>{if(!raw||live)return;const w=$('cv').clientWidth,v=tView(),du=tDur(),x=cvx(e);
+  const hx={s:(du*$('ts').value/1000-v.a)/v.span*w,e:(du*$('te').value/1000-v.a)/v.span*w};
+  // knobs sit inside the kept part, so a touch just inside counts toward that handle
+  const ds=Math.abs(x-(hx.s+7)),de=Math.abs(x-(hx.e-7)),h=ds<de||(ds===de&&x<hx.s)?'s':'e';
+  if(Math.min(ds,de)>34)return;
+  e.preventDefault();try{$('cv').setPointerCapture(e.pointerId)}catch(_){}
+  T.act=h;T.drag={id:e.pointerId,h,off:hx[h]-x,x,cx:e.clientX,sx:x};holdTimer();drawTrim();showMag(e.clientX)});
+$('cv').addEventListener('pointermove',e=>{const d=T.drag;if(!d||e.pointerId!==d.id)return;const w=$('cv').clientWidth,v=tView(),x=cvx(e);
+  d.x=x;d.cx=e.clientX;const t=v.a+(x+d.off)/w*v.span;setHandle(d.h,t/tDur()*1000);
+  if(Math.abs(x-d.sx)>4){d.sx=x;holdTimer()}updTrim();showMag(e.clientX)});
+function endDrag(e){const d=T.drag;if(!d||e.pointerId!==d.id)return;clearTimeout(T.timer);T.drag=null;T.fine=null;$('mag').hidden=true;updTrim()}
+$('cv').addEventListener('pointerup',endDrag);$('cv').addEventListener('pointercancel',endDrag);
+function hearStop(){if(T.src){const s=T.src;T.src=null;try{s.onended=null;s.stop()}catch(e){}}T.play=null;$('hearcut').textContent='▶ hear the cut';drawTrim()}
+$('hearcut').onclick=()=>{if(!raw)return;if(T.src){hearStop();return}stopPlay();
+  const c=AC(),du=tDur(),sr=raw.sr,t=du*$(T.act==='s'?'ts':'te').value/1000,a=Math.max(0,t-.5),b=Math.min(du,t+.5);
+  const i0=Math.floor(a*sr),n=Math.max(1,Math.floor(b*sr)-i0),ks=du*$('ts').value/1000*sr,ke=du*$('te').value/1000*sr;
+  const buf=c.createBuffer(1,n,sr),y=buf.getChannelData(0);
+  for(let i=0;i<n;i++){const j=i0+i;y[i]=raw.data[j]*(j<ks||j>=ke?.25:1)}  // the part that gets cut plays quieter
+  const s=c.createBufferSource();s.buffer=buf;s.connect(c.destination);T.src=s;$('hearcut').textContent='■ stop';
+  const st=c.currentTime+.02;s.start(st);s.onended=hearStop;
+  const anim=()=>{if(T.src!==s)return;T.play=a+Math.max(0,c.currentTime-st);drawTrim();requestAnimationFrame(anim)};requestAnimationFrame(anim)};
 $('vol').addEventListener('input',()=>{const v=+$('vol').value;$('vollab').textContent='Volume: '+(v>0?'+':'')+v+' dB'});
 function rnd(s){return()=>(s=s*16807%2147483647)/2147483647}
 function sky(g,w,h,st){const l=g.createLinearGradient(0,0,0,h);st.forEach(([p,c])=>l.addColorStop(p,c));g.fillStyle=l;g.fillRect(0,0,w,h)}
@@ -355,7 +413,7 @@ function paint(g,w,h){if(pic.img){const im=pic.img,iw=im.naturalWidth||im.width,
   const b=document.createElement('button'),c=document.createElement('canvas');b.type='button';b.title=n;b.setAttribute('aria-label',n);c.width=c.height=96;scene(c.getContext('2d'),96,96,k);b.appendChild(c);
   b.onclick=()=>{pic={kind:k,img:null};vchg();[...$('pics').children].forEach(x=>x.classList.toggle('sel',x===b))};if(i===0)b.classList.add('sel');$('pics').appendChild(b)});
 $('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{pic={kind:'own',img:im,name:f.name.replace(/\.[^.]+$/,'').trim(),px:im.naturalWidth+'x'+im.naturalHeight,kb:kb(f.size)};[...$('pics').children].forEach(x=>x.classList.remove('sel'));vm(vblob?'Your photo is selected. Tap Make Video to update your video.':'Your photo is selected.')};im.src=URL.createObjectURL(f)};
-['vshape','vmotion','vamt'].forEach(id=>$(id).addEventListener('change',vchg));
+['vshape','vmotion'].forEach(id=>$(id).addEventListener('change',vchg));
 /* ---- Video motion (test V7.4): the zoom/pan is drawn with WebGL so the picture can move by fractions of a pixel.
    iPhone's 2D canvas snaps it to whole pixels, so slow motion moved in visible 1-pixel steps. Returns null if WebGL isn't available. ---- */
 function glMover(src,W,H){
@@ -489,12 +547,12 @@ $('vmake').onclick=async()=>{
   if(!window.VideoEncoder&&!recOK){vm('This browser can’t make video here.');return}
   stopPlay();$('vmake').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;vinfo=null;
   const vid=newId(),tx=id=>$(id).selectedOptions[0].text,names={desert:'Desert sunset',forest:'Misty forest',night:'Starry night',ocean:'Ocean dawn'};
-  const vset={...snapAudio(out.st),'Picture':pic.img?'Uploaded photo':names[pic.kind],'Photo Pixels':pic.img?pic.px:'','Photo KB':pic.img?pic.kb:'','Shape':tx('vshape'),'Motion':tx('vmotion'),'Motion Speed':tx('vamt')};
+  const vset={...snapAudio(out.st),'Picture':pic.img?'Uploaded photo':names[pic.kind],'Photo Pixels':pic.img?pic.px:'','Photo KB':pic.img?pic.kb:'','Shape':tx('vshape'),'Motion':tx('vmotion'),'Motion Speed':'Fast'};
   $('vmsg').hidden=false;$('vmsg').scrollIntoView({behavior:'smooth',block:'center'});
   let mv=null;
   try{const tall=$('vshape').value==='tall',W=tall?540:720,H=tall?960:720,cv=document.createElement('canvas'),bg=document.createElement('canvas');
     const BW=Math.round(W*1.35),BH=Math.round(H*1.35);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';paint(bg.getContext('2d'),BW,BH);
-    const mo=$('vmotion').value,Z=1+(+$('vamt').value),dur=out.data.length/out.sr;
+    const mo=$('vmotion').value,Z=1.35,dur=out.data.length/out.sr;
     try{mv=glMover(bg,W,H)}catch(e){mv=null}
     const view=p=>{const e=p*p*(3-2*p);let z=1,fx=.5,fy=.5;
       if(mo==='zin')z=1+(Z-1)*e;else if(mo==='zout')z=Z-(Z-1)*e;else if(mo!=='still'){z=Z;if(mo==='pr')fx=e;else if(mo==='pl')fx=1-e;else if(mo==='pd')fy=e;else fy=1-e}
@@ -527,7 +585,7 @@ document.querySelectorAll('.fx input,.fx select').forEach(el=>el.addEventListene
 document.querySelectorAll('.fxr.acc').forEach(r=>{const c=r.querySelector('input[type=checkbox]'),f=()=>r.classList.toggle('open',c.checked);c.addEventListener('change',f);f()});
 function fitBig(){const e=document.querySelector('.sec.big');let f=24;e.style.fontSize=f+'px';while(e.scrollWidth>e.clientWidth&&f>10){f-=.25;e.style.fontSize=f+'px'}}
 fitBig();if(document.fonts)document.fonts.ready.then(fitBig);
-addEventListener('resize',()=>{fitBig();draw(out?out.data:raw&&raw.data)});
+addEventListener('resize',()=>{fitBig();if(raw&&!live)drawTrim();else draw(null)});
 addEventListener('error',e=>msg('Error: '+e.message));
 draw(null);
 </script>
