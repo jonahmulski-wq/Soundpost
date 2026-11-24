@@ -36,6 +36,7 @@ button,select{font:inherit;color:inherit}
 .fxr input[type=checkbox]{width:20px;height:20px;accent-color:var(--acc)}
 .ctl{display:grid;grid-template-columns:90px 1fr;gap:6px 10px;align-items:center;margin:8px 0 0 30px;color:var(--mute);font-size:14px}
 .ctl input[type=range]{width:100%;accent-color:var(--acc)}
+.fx .ctl{margin-right:10px}  /* room on the right so focus outlines and slider ends are not clipped by the sliding box */
 select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
 .msg{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;background:var(--panel);color:var(--ink);font-size:14px}
 audio{width:100%;margin-top:10px}
@@ -114,7 +115,7 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
     <div class="body"><div><div class="ctl"><span>Layer</span><select id="oct"><option value="down">One octave lower</option><option value="up">One octave higher</option></select>
     <span>Amount</span><input type="range" id="octmix" min="10" max="100" value="55"></div></div></div></div>
   <div class="fxr acc"><label class="t"><input type="checkbox" id="wat"> Background sounds</label>
-    <div class="body"><div><div class="ctl" style="margin-right:10px"><select id="wsel" style="grid-column:1/-1"><option value="brook">Flowing Brook</option></select>
+    <div class="body"><div><div class="ctl"><select id="wsel" style="grid-column:1/-1"><option value="brook">Flowing Brook</option></select>
     <span>Volume</span><input type="range" id="watmix" min="2" max="100" value="22"></div></div></div></div>
 </div>
 
