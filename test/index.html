@@ -325,6 +325,7 @@ $('share').onclick=async()=>{const had=blob&&!dirty;if(!await prep(msg))return;
 
 function touch(){dirty=true;$('vshare').disabled=true;$('vdl').disabled=true}
 /* ---- Trim: two handles on the waveform (values stay in ts/te, 0-1000) ---- */
+const knobX=(id,x,w,kw)=>id==='s'?(x-kw<0?x:x-kw):(x+kw>w?x-kw:x);
 const T={act:'s',drag:null,fine:null,timer:0,pk:null,pkw:0,src:null,play:null};
 const tDur=()=>raw.data.length/raw.sr;
 const fineSpan=()=>Math.min(2,tDur()*.4);
@@ -343,7 +344,7 @@ function paintTrim(c,w,h,v,opt){const k=devicePixelRatio||1;if(c.width!==Math.ro
   g.fillStyle='rgba(120,120,120,.6)';if(xs>0)g.fillRect(0,0,Math.min(w,xs),h);if(xe<w)g.fillRect(Math.max(0,xe),0,w-Math.max(0,xe),h);
   [['s',xs],['e',xe]].forEach(([id,x])=>{if(x<-20||x>w+20)return;const on=id===T.act;
     g.globalAlpha=on?1:.65;g.fillStyle=on?ink:ink;g.fillRect(x-(on?1.5:1),0,on?3:2,h);
-    if(!opt.mag){const kw=14,kh=30,kx=id==='s'?x:x-kw;g.fillStyle=on?ink:ink;g.beginPath();
+    if(!opt.mag){const kw=14,kh=30,kx=knobX(id,x,w,kw);g.fillStyle=on?ink:ink;g.beginPath();
       if(g.roundRect)g.roundRect(kx,(h-kh)/2,kw,kh,4);else g.rect(kx,(h-kh)/2,kw,kh);g.fill();
       g.fillStyle=cs.getPropertyValue('--panel');g.fillRect(kx+5,(h-12)/2,1.5,12);g.fillRect(kx+8,(h-12)/2,1.5,12)}
     g.globalAlpha=1});
@@ -366,8 +367,8 @@ function holdTimer(){clearTimeout(T.timer);if(T.fine!==null)return;
 const cvx=e=>e.clientX-$('cv').getBoundingClientRect().left;
 $('cv').addEventListener('pointerdown',e=>{if(!raw||live)return;const w=$('cv').clientWidth,v=tView(),du=tDur(),x=cvx(e);
   const hx={s:(du*$('ts').value/1000-v.a)/v.span*w,e:(du*$('te').value/1000-v.a)/v.span*w};
-  // knobs sit inside the kept part, so a touch just inside counts toward that handle
-  const ds=Math.abs(x-(hx.s+7)),de=Math.abs(x-(hx.e-7)),h=ds<de||(ds===de&&x<hx.s)?'s':'e';
+  // knobs sit on the gray (cut) side of each line, so measure to the knob's middle
+  const ds=Math.abs(x-(knobX('s',hx.s,w,14)+7)),de=Math.abs(x-(knobX('e',hx.e,w,14)+7)),h=ds<de||(ds===de&&x<hx.s)?'s':'e';
   if(Math.min(ds,de)>34)return;
   e.preventDefault();try{$('cv').setPointerCapture(e.pointerId)}catch(_){}
   T.act=h;T.drag={id:e.pointerId,h,off:hx[h]-x,x,cx:e.clientX,sx:x};holdTimer();drawTrim();showMag(e.clientX)});
@@ -378,10 +379,10 @@ function endDrag(e){const d=T.drag;if(!d||e.pointerId!==d.id)return;clearTimeout
 $('cv').addEventListener('pointerup',endDrag);$('cv').addEventListener('pointercancel',endDrag);
 function hearStop(){if(T.src){const s=T.src;T.src=null;try{s.onended=null;s.stop()}catch(e){}}T.play=null;$('hearcut').textContent='▶ hear the cut';drawTrim()}
 $('hearcut').onclick=()=>{if(!raw)return;if(T.src){hearStop();return}stopPlay();
-  const c=AC(),du=tDur(),sr=raw.sr,t=du*$(T.act==='s'?'ts':'te').value/1000,a=Math.max(0,t-.5),b=Math.min(du,t+.5);
-  const i0=Math.floor(a*sr),n=Math.max(1,Math.floor(b*sr)-i0),ks=du*$('ts').value/1000*sr,ke=du*$('te').value/1000*sr;
+  const c=AC(),du=tDur(),sr=raw.sr,t=du*$(T.act==='s'?'ts':'te').value/1000,a=T.act==='s'?t:Math.max(0,t-1.5),b=T.act==='s'?Math.min(du,t+1.5):t;
+  const i0=Math.floor(a*sr),n=Math.max(1,Math.floor(b*sr)-i0);
   const buf=c.createBuffer(1,n,sr),y=buf.getChannelData(0);
-  for(let i=0;i<n;i++){const j=i0+i;y[i]=raw.data[j]*(j<ks||j>=ke?.25:1)}  // the part that gets cut plays quieter
+  y.set(raw.data.subarray(i0,i0+n));
   const s=c.createBufferSource();s.buffer=buf;s.connect(c.destination);T.src=s;$('hearcut').textContent='■ stop';
   const st=c.currentTime+.02;s.start(st);s.onended=hearStop;
   const anim=()=>{if(T.src!==s)return;T.play=a+Math.max(0,c.currentTime-st);drawTrim();requestAnimationFrame(anim)};requestAnimationFrame(anim)};
