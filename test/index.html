@@ -114,7 +114,7 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
     <div class="body"><div><div class="ctl"><span>Layer</span><select id="oct"><option value="down">One octave lower</option><option value="up">One octave higher</option></select>
     <span>Amount</span><input type="range" id="octmix" min="10" max="100" value="55"></div></div></div></div>
   <div class="fxr acc"><label class="t"><input type="checkbox" id="wat"> Background water</label>
-    <div class="body"><div><div class="ctl"><span>Volume</span><input type="range" id="watmix" min="2" max="100" value="40"></div></div></div></div>
+    <div class="body"><div><div class="ctl"><span>Volume</span><input type="range" id="watmix" min="2" max="100" value="50"></div></div></div></div>
 </div>
 
 <div class="sec big">Share Soundpost audio or video</div>
@@ -292,7 +292,7 @@ async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/10
   for(let i=0;i<y.length;i++)y[i]=sc(y[i]*vg);
   bgStatus='';
   if($('wat').checked){try{const w=await bgData('water',y.length,sr);let vs=0,ws=0;for(let i=0;i<y.length;i++){vs+=y[i]*y[i];ws+=w[i]*w[i]}
-      const gw=(+$('watmix').value/100)*.5*Math.max(Math.sqrt(vs/y.length),.01)/Math.max(Math.sqrt(ws/y.length),1e-6);let mp=0;
+      const gw=(+$('watmix').value/100)*.375*Math.max(Math.sqrt(vs/y.length),.01)/Math.max(Math.sqrt(ws/y.length),1e-6);let mp=0;
       for(let i=0;i<y.length;i++){y[i]+=w[i]*gw;mp=Math.max(mp,Math.abs(y[i]))}
       if(mp>.9){const k=.9/mp;for(let i=0;i<y.length;i++)y[i]*=k}
       bgStatus='OK'}catch(e){bgStatus='Failed: '+(e&&e.message||e)}}
