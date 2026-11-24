@@ -113,6 +113,8 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
   <div class="fxr acc"><label class="t"><input type="checkbox" id="octon"> Octave layer</label>
     <div class="body"><div><div class="ctl"><span>Layer</span><select id="oct"><option value="down">One octave lower</option><option value="up">One octave higher</option></select>
     <span>Amount</span><input type="range" id="octmix" min="10" max="100" value="55"></div></div></div></div>
+  <div class="fxr acc"><label class="t"><input type="checkbox" id="wat"> Background water</label>
+    <div class="body"><div><div class="ctl"><span>Volume</span><input type="range" id="watmix" min="5" max="100" value="30"></div></div></div></div>
 </div>
 
 <div class="sec big">Share Soundpost audio or video</div>
@@ -162,7 +164,9 @@ function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioConte
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 
 /* ---- Test log (only runs on the /test/ page) ---- */
-const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.5';
+const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.6';
+/* Background sounds. ASSET_BASE is the one place that says where the sounds folder lives (the repo now; a different server later). Each sound is ASSET_BASE + its file. */
+const ASSET_BASE=TEST?'../':'',BG={water:'sounds/water.mp3'},bgBuf={};let bgStatus='';
 const LOG_URL='https://script.google.com/macros/s/AKfycby1xBc16mJsY6GnpyNccJCt5RWd7ZnjsNqHxwKO7KsaIu9qmBNrULClPuMBLRKMvJeC-w/exec',LOG_KEY='sp-7Qx2';  // LOG_URL: the Apps Script web app address, once deployed
 let srcInfo={src:'',type:'',kb:''},micInfo={},blobInfo=null,vinfo=null,dev={};
 const r1=x=>Math.round(x*10)/10,r2=x=>Math.round(x*100)/100,yn=b=>b?'Yes':'No',kb=n=>Math.round(n/1024);
@@ -181,7 +185,8 @@ function snapAudio(st){const ts=+$('ts').value,te=+$('te').value,du=raw.data.len
     'Low Cut':yn(ch('lc')),'Tame Amount':ch('comp')?v('camt'):'Off','Volume dB':ch('volon')?v('vol'):'Off',
     'Echo':yn(ch('echo')),'Echo Delay':ch('echo')?v('edelay'):'','Echo Repeats':ch('echo')?v('efb'):'','Echo Amount':ch('echo')?v('emix'):'',
     'Reverb':yn(ch('rev')),'Reverb Type':ch('rev')?tx('room'):'','Reverb Amount':ch('rev')?v('revmix'):'',
-    'Repeat':yn(ch('rep')),'Repeat Times':ch('rep')?v('reps'):'','Octave':yn(ch('octon')),'Octave Dir':ch('octon')?($('oct').value==='up'?'Higher':'Lower'):'','Octave Amount':ch('octon')?v('octmix'):''}}
+    'Repeat':yn(ch('rep')),'Repeat Times':ch('rep')?v('reps'):'','Octave':yn(ch('octon')),'Octave Dir':ch('octon')?($('oct').value==='up'?'Higher':'Lower'):'','Octave Amount':ch('octon')?v('octmix'):'',
+    'Water':yn(ch('wat')),'Water Sound':ch('wat')?'Water':'','Water Volume':ch('wat')?v('watmix'):'','Water Load':ch('wat')?bgStatus:''}}
 function stamp(){const d=new Date(),p=n=>String(n).padStart(2,'0'),o=-d.getTimezoneOffset()/60;
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+' (UTC'+(o>=0?'+':'')+o+')'}
 function logIt(action,type,info,b){if(!TEST||!info)return;
@@ -253,6 +258,12 @@ function pitch(d,r,sr){const W=Math.floor(sr*.09),H=W>>1,o=new Float32Array(d.le
 function ir(c,secs,sr){const n=Math.floor(secs*sr),b=c.createBuffer(1,n,sr),x=b.getChannelData(0);
   for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*Math.pow(1-i/n,3);return b}
 
+/* Background sound: load once, then loop it for the whole clip with a tiny fade-in and a fade-out at the end. */
+async function bgData(k,N,sr){
+  if(!bgBuf[k]){const r=await fetch(ASSET_BASE+BG[k]);if(!r.ok)throw new Error('HTTP '+r.status);bgBuf[k]=await AC().decodeAudioData(await r.arrayBuffer())}
+  const T=N/sr,fi=Math.min(.06,T/4),fo=Math.min(1,T*.4),oc=new OfflineAudioContext(1,N,sr),s=oc.createBufferSource(),g=oc.createGain();
+  s.buffer=bgBuf[k];s.loop=true;g.gain.setValueAtTime(0,0);g.gain.linearRampToValueAtTime(1,fi);g.gain.setValueAtTime(1,Math.max(fi,T-fo));g.gain.linearRampToValueAtTime(0,T);
+  s.connect(g);g.connect(oc.destination);s.start();return(await oc.startRendering()).getChannelData(0)}
 async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000);let d=raw.data.slice(s0,Math.floor(n*$('te').value/1000)),off=s0;const sr=raw.sr;let s0s=0;for(let i=0;i<d.length;i++)s0s+=d[i]*d[i];const before=dB(Math.sqrt(s0s/Math.max(1,d.length)));
   if($('octon').checked){const sh=pitch(d,$('oct').value==='up'?2:.5,sr),m=+$('octmix').value/100,y=new Float32Array(d.length);
     for(let i=0;i<d.length;i++)y[i]=d[i]*(1-.35*m)+sh[i]*m;d=y}
@@ -279,6 +290,12 @@ async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/10
   if(pk>0){const gn=Math.min(.7/pk,.12/Math.max(rms,1e-6));for(let i=0;i<y.length;i++)y[i]*=gn}
   const vg=Math.pow(10,($('volon').checked?+$('vol').value:0)/20),sc=v=>Math.abs(v)<.8?v:Math.sign(v)*(.8+.2*Math.tanh((Math.abs(v)-.8)/.2));
   for(let i=0;i<y.length;i++)y[i]=sc(y[i]*vg);
+  bgStatus='';
+  if($('wat').checked){try{const w=await bgData('water',y.length,sr);let vs=0,ws=0;for(let i=0;i<y.length;i++){vs+=y[i]*y[i];ws+=w[i]*w[i]}
+      const gw=(+$('watmix').value/100)*Math.max(Math.sqrt(vs/y.length),.01)/Math.max(Math.sqrt(ws/y.length),1e-6);let mp=0;
+      for(let i=0;i<y.length;i++){y[i]+=w[i]*gw;mp=Math.max(mp,Math.abs(y[i]))}
+      if(mp>.9){const k=.9/mp;for(let i=0;i<y.length;i++)y[i]*=k}
+      bgStatus='OK'}catch(e){bgStatus='Failed: '+(e&&e.message||e)}}
   let s2=0,p2=0;for(let i=0;i<y.length;i++){s2+=y[i]*y[i];p2=Math.max(p2,Math.abs(y[i]))}
   return{data:y,sr,st:{before,after:dB(Math.sqrt(s2/Math.max(1,y.length))),peak:dB(p2)}}}
 
