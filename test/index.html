@@ -164,7 +164,7 @@ const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 /* ---- Test log (only runs on the /test/ page) ---- */
 const TEST=/\/test(\/|$)/.test(location.pathname)||location.protocol==='file:',TVER='V7.5';
 const LOG_URL='https://script.google.com/macros/s/AKfycby1xBc16mJsY6GnpyNccJCt5RWd7ZnjsNqHxwKO7KsaIu9qmBNrULClPuMBLRKMvJeC-w/exec',LOG_KEY='sp-7Qx2';  // LOG_URL: the Apps Script web app address, once deployed
-let srcInfo={src:'',type:'',kb:''},blobInfo=null,vinfo=null,dev={};
+let srcInfo={src:'',type:'',kb:''},micInfo={},blobInfo=null,vinfo=null,dev={};
 const r1=x=>Math.round(x*10)/10,r2=x=>Math.round(x*100)/100,yn=b=>b?'Yes':'No',kb=n=>Math.round(n/1024);
 const dB=x=>x>0?r1(20*Math.log10(x)):-99;
 function newId(){const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='SP-';const r=crypto.getRandomValues(new Uint8Array(4));r.forEach(v=>s+=a[v%a.length]);return s}
@@ -176,7 +176,7 @@ async function devInfo(){const n=navigator,ua=n.userAgent;let phone='',browser='
   if(!browser){const m=ua.match(/(CriOS|FxiOS|EdgA?|SamsungBrowser|Firefox|Chrome|Version)\/([\d.]+)/);browser=m?(m[1]==='Version'?'Safari':m[1])+' '+m[2]:ua.slice(0,60)}
   dev={'Phone':phone,'Browser':browser,'Screen':screen.width+'x'+screen.height+' @'+(devicePixelRatio||1)+'x','Memory GB':n.deviceMemory||'','CPU Cores':n.hardwareConcurrency||''}}
 function snapAudio(st){const ts=+$('ts').value,te=+$('te').value,du=raw.data.length/raw.sr,ch=id=>$(id).checked,v=id=>+$(id).value,tx=id=>$(id).selectedOptions[0].text;
-  return{'Sound Source':srcInfo.src,'Source File Type':srcInfo.type,'Source File KB':srcInfo.kb,'Raw Length s':r2(du),'Kept Length s':r2(du*(te-ts)/1000),'Trimmed':yn(ts>0||te<1000),
+  return{'Sound Source':srcInfo.src,'Mic Auto Gain':srcInfo.agc||'','Mic Noise Suppression':srcInfo.ns||'','Mic Echo Cancel':srcInfo.ec||'','Mic Name':srcInfo.mic||'','Source File Type':srcInfo.type,'Source File KB':srcInfo.kb,'Raw Length s':r2(du),'Kept Length s':r2(du*(te-ts)/1000),'Trimmed':yn(ts>0||te<1000),
     'Clipping':yn(raw.clip>20),'Clip Count':raw.clip,'Loudness Before dB':st.before,'Loudness After dB':st.after,'Peak dB':st.peak,
     'Low Cut':yn(ch('lc')),'Tame Amount':ch('comp')?v('camt'):'Off','Volume dB':ch('volon')?v('vol'):'Off',
     'Echo':yn(ch('echo')),'Echo Delay':ch('echo')?v('edelay'):'','Echo Repeats':ch('echo')?v('efb'):'','Echo Amount':ch('echo')?v('emix'):'',
@@ -228,13 +228,15 @@ async function startRec(){AC();
   msg('Asking for microphone access…');
   try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
   catch(e){msg('Microphone unavailable ('+(e.name||'error')+'). Allow mic access, or use “choose an audio file”.');return}
+  try{const tr=stream.getAudioTracks()[0],st=tr.getSettings?tr.getSettings():{},oo=v=>v===undefined?'Unknown':v?'On':'Off';
+    micInfo={agc:oo(st.autoGainControl),ns:oo(st.noiseSuppression),ec:oo(st.echoCancellation),mic:(tr.label||'').slice(0,60)}}catch(e){micInfo={}}
   try{const c=AC(),sn=c.createMediaStreamSource(stream),an=c.createAnalyser();an.fftSize=2048;sn.connect(an);
     const buf=new Float32Array(an.fftSize),pk=[];let acc=0,last=performance.now();live={sn};
     const loop=()=>{if(!live)return;an.getFloatTimeDomainData(buf);for(let i=0;i<buf.length;i++){const a=Math.abs(buf[i]);if(a>acc)acc=a}
       const now=performance.now();if(now-last>=40){pk.push(acc);acc=0;last=now;if(pk.length>2000)pk.splice(0,1000);drawLive(pk)}requestAnimationFrame(loop)};requestAnimationFrame(loop)}catch(e){live=null}
   chunks=[];rec=new MediaRecorder(stream);rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
   rec.onstop=async()=>{clearInterval(tick);if(live){try{live.sn.disconnect()}catch(e){}live=null}stream.getTracks().forEach(t=>t.stop());$('rec').classList.remove('on');$('rec').textContent='Rec';
-    const rb=new Blob(chunks,{type:rec.mimeType});srcInfo={src:'Recorded',type:(rec.mimeType||'').split(';')[0],kb:kb(rb.size)};await load(await rb.arrayBuffer())};
+    const rb=new Blob(chunks,{type:rec.mimeType});srcInfo={src:'Recorded',type:(rec.mimeType||'').split(';')[0],kb:kb(rb.size),...micInfo};await load(await rb.arrayBuffer())};
   rec.start();t0=Date.now();$('rec').classList.add('on');$('rec').textContent='Stop';msg('Recording… tap Stop when done (up to 2 minutes).');
   tick=setInterval(()=>{const s=(Date.now()-t0)/1000;$('tm').textContent=fmt(s);if(s>=120)rec.stop()},200)}
 $('rec').onclick=()=>{stopPlay();rec&&rec.state==='recording'?rec.stop():startRec()};
