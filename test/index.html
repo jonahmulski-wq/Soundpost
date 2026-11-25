@@ -605,8 +605,8 @@ $('vmake').onclick=async()=>{
   catch(e){vm('Couldn’t make the video ('+(e.message||e.name||'error')+').')}
   if(mv)mv.free();
   $('vmake').disabled=false};
-$('vshare').onclick=async()=>{if(!vblob)return;const f=new File([vblob],vname(),{type:vblob.type});
-  if(navigator.canShare&&navigator.canShare({files:[f]})){try{logIt('Share','Video',vinfo,vblob);await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return}}
+$('vshare').onclick=async()=>{if(!vblob)return;const f=new File([vblob],vname(),{type:vblob.type.split(';')[0]});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{logIt('Share','Video',vinfo&&{...vinfo,'Share Style':'No title, '+f.type},vblob);await navigator.share({files:[f]});return}catch(e){if(e.name==='AbortError')return}}
   vm('The share sheet isn’t available here. Use Download Video instead.')};
 
 function save(b,name){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
