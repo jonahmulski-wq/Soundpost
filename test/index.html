@@ -40,6 +40,7 @@ button,select{font:inherit;color:inherit}
 .fx .ctl{margin-right:10px}
 .ctl.sub{display:flex;gap:10px;align-items:center;color:var(--ink);font-size:15px}
 .ctl.sub.off{opacity:.45}
+.bl{display:inline-block;width:2px;height:.9em;background:#2f7bf6;vertical-align:-.1em;margin:0 2px}
 .ctl.note{display:block;color:var(--mute);font-size:13px}  /* room on the right so focus outlines and slider ends are not clipped by the sliding box */
 select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
 .msg{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;background:var(--panel);color:var(--ink);font-size:14px}
@@ -115,7 +116,7 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
     <span>Amount</span><input type="range" id="revmix" min="0" max="100" value="50"></div></div></div></div>
   <div class="fxr acc"><label class="t"><input type="checkbox" id="rep"> Repeat the clip</label>
     <div class="body"><div><div class="ctl"><span>Times</span><select id="reps"><option>2</option><option>3</option><option>4</option></select></div>
-    <label class="ctl sub"><input type="checkbox" id="repbeat"> Repeat in time with clip</label>
+    <label class="ctl sub"><input type="checkbox" id="repbeat"> <span>Repeat in time – “<span class="bl"></span>” shows the beat</span></label>
     <label class="ctl sub"><input type="checkbox" id="repkeep"> Keep my exact trim</label>
     <div class="ctl sub note" id="repmsg" hidden></div></div></div></div>
   <div class="fxr acc"><label class="t"><input type="checkbox" id="octon"> Octave layer</label>
@@ -281,7 +282,7 @@ const XF=.02;
    2. Breathing-room check (Repeat on, no beat in use, exact trim off): quiet end = crossfade only; a note still ringing = borrow up to
       BR_MAX s past End if it dies away before a new note; otherwise fade the end and add a short pause.
    3. "Keep my exact trim": none of the above, just the 20 ms crossfade. ---- */
-const RP={user:null,beat:null,why:'',beatMsg:'',note:'',plan:null,lv:null};
+const RP={lines:null,user:null,beat:null,why:'',beatMsg:'',note:'',plan:null,lv:null};
 const BR_MAX=1,BR_FADE=.25,BR_GAP=.35,BR_GAP_FX=.45,PRE=.035;  // borrow limit, fade-out, pause (longer with echo/reverb), lead-in before a note
 function fftR(re,im){const n=re.length;
   for(let i=1,j=0;i<n;i++){let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){let t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t}}
@@ -339,25 +340,46 @@ function alignTo(t1,t2){const A=lv1(t1-.03,150);let best=0,bc=-Infinity;
   for(let s=-25;s<=25;s++){const B=lv1(t2+s/1000-.03,150);let c=0,na=0,nb=0;for(let i=0;i<150;i++){c+=A[i]*B[i];na+=A[i]*A[i];nb+=B[i]*B[i]}c/=Math.sqrt(na*nb)||1;if(c>bc){bc=c;best=s}}
   return t2+best/1000}
 const setT=(id,t)=>$(id).value=Math.round(Math.max(0,Math.min(1,t/tDur()))*1e6)/1000;
+/* Foot-tap pulse: people feel the slower beat, so halve the found tempo until it is 120 BPM or less (never below 40).
+   Which of the faster beats is the main one: the one with the stronger notes on it. */
+function footPulse(o,bt){let p=bt.p,ph=bt.ph;
+  while(60/p>120&&60/(2*p)>=40){const tol=Math.max(.035,.1*p);let w0=0,w1=0;
+    for(let i=0;i<o.t.length;i++){let r=((o.t[i]-ph)%(2*p)+2*p)%(2*p);if(Math.min(r,2*p-r)<=tol)w0+=o.w[i];else if(Math.abs(r-p)<=tol)w1+=o.w[i]}
+    if(w1>w0)ph+=p;p*=2}
+  return{p,ph,bpm:60/p,gridBpm:bt.bpm}}
+/* Beat lines that follow the player: step one beat at a time; when a note starts near the expected beat, put the line on it
+   and let the spacing drift slowly with the playing (within ±12%). With no note there, the line is a guess (est). */
+function trackBeats(o,p,ph,a,b){const T=o.t,W=o.w,tol=Math.max(.04,.12*p),mx=Math.max(...W),pick=t=>{let x=-1,bs=0;
+    for(let i=0;i<T.length;i++){const d=Math.abs(T[i]-t);if(d>tol)continue;const sc=W[i]/mx*(1-d/tol*.6);if(sc>bs&&W[i]>=mx*.08){bs=sc;x=i}}return x};
+  let t0=null;for(let g=ph+Math.ceil((a-ph)/p)*p;g<b&&t0===null;g+=p){const i=pick(g);if(i>=0)t0=T[i]}
+  if(t0===null)return[];const out=[{t:t0,est:false}];
+  for(const dir of[1,-1]){let t=t0,q=p;for(;;){const g=t+dir*q;if(g<a-.01||g>b+.01)break;const i=pick(g),n=i>=0?T[i]:g;
+    if(i>=0)q=Math.max(p*.88,Math.min(p*1.12,.75*q+.25*Math.abs(n-t)));(dir>0?out.push.bind(out):out.unshift.bind(out))({t:n,est:i<0});t=n}}
+  return out}
+const BEATC='#2f7bf6';
 function repSnap(){const du=tDur(),u=RP.user,us=du*u.ts/1000,ue=du*u.te/1000,a=Math.max(0,Math.min(us-2,du-40)),b=Math.min(du,a+40);  // look at up to 40 s around the trim: more notes make the beat estimate steadier
-  const o=noteStarts(a,b),bt=findBeat(o);RP.beat=null;
+  const o=noteStarts(a,b),bt=findBeat(o);RP.beat=null;RP.lines=null;
   const fail=why=>{RP.why=why;RP.beatMsg=why==='Too short'?'This clip is too short to repeat in time. Using the breathing-room check instead.':'Couldn’t find a steady beat. Using the breathing-room check instead.';
-    $('repbeat').checked=false;$('ts').value=u.ts;$('te').value=u.te;RP.user=null;updTrim();repShow();return false};
+    $('repbeat').checked=false;$('ts').value=u.ts;$('te').value=u.te;RP.user=null;RP.lines=null;updTrim();repShow();return false};
   if(!bt)return fail('No steady beat');
-  const p=bt.p,near=(t,r)=>{let x=null;for(const v of o.t)if(Math.abs(v-t)<=r&&(x===null||Math.abs(v-t)<Math.abs(x-t)))x=v;return x};
-  let s0=near(us+PRE,Math.min(.5,.6*p));if(s0===null)s0=bt.ph+Math.round((us+PRE-bt.ph)/p)*p;
-  let k=Math.max(1,Math.round((ue-us)/p)),P=0,hit=false;
-  for(;k>=1;k--){const tg=s0+k*p;if(tg-PRE+XF>du)continue;const e1=near(tg,.15*p);
-    if(e1!==null&&e1-PRE+XF<=du){P=alignTo(s0,e1)-s0;hit=true}else P=k*p;break}
-  if(k<1)return fail('Too short');
+  const fp=footPulse(o,bt),p=fp.p,L=trackBeats(o,p,fp.ph,a,b),h=.15*p;
+  if(L.length<2)return fail('No steady beat');
+  RP.lines=L;
+  // Start: the beat at or just before your Start (a hair after counts). End: the beat at or just after your End (a hair before counts).
+  let si=-1;for(let i=0;i<L.length;i++)if(L[i].t-PRE<=us+h)si=i;if(si<0)si=0;
+  let ei=-1;for(let i=si+1;i<L.length;i++)if(L[i].t-PRE>=ue-h){ei=i;break}
+  if(ei<0)ei=L.length-1;
+  while(ei>si&&L[ei].t-PRE+XF>du)ei--;
+  if(ei<=si)return fail('Too short');
+  const s0=L[si].t,e1=L[ei].t,k=ei-si,onNote=!L[si].est&&!L[ei].est,P=(onNote?alignTo(s0,e1):e1)-s0;
   const s=Math.max(0,s0-PRE);setT('ts',s);setT('te',Math.min(du,s+P+XF));
-  RP.beat={bpm:bt.bpm,k,P,onNote:hit,fit:bt.frac};RP.why='';
-  RP.beatMsg='In time: about '+Math.round(bt.bpm)+' beats per minute, '+k+' beat'+(k>1?'s':'')+' per repeat. Start and End moved to fit. Uncheck to get your trim back.';
+  RP.beat={bpm:60/(P/k),gridBpm:fp.gridBpm,k,P,onNote,fit:bt.frac,est:L.filter(x=>x.est).length/L.length};RP.why='';
+  RP.beatMsg='In time: about '+Math.round(60/(P/k))+' beats per minute, '+k+' beat'+(k>1?'s':'')+' per repeat. Start and End moved to the nearest beats outside your trim. Uncheck to get your trim back.';
   updTrim();repShow();return true}
 function repBeatOn(){if(!raw)return;if(!RP.user)RP.user={ts:+$('ts').value,te:+$('te').value};repSnap()}
-function repBeatOff(){if(RP.user){$('ts').value=RP.user.ts;$('te').value=RP.user.te;RP.user=null;updTrim()}RP.beat=null;RP.beatMsg='';repShow()}
+function repBeatOff(){RP.lines=null;if(RP.user){$('ts').value=RP.user.ts;$('te').value=RP.user.te;RP.user=null;updTrim()}RP.beat=null;RP.beatMsg='';repShow()}
 function repDragged(){if(!$('repbeat').checked||!raw)return;RP.user={ts:+$('ts').value,te:+$('te').value};repSnap()}  // a hand-moved handle becomes the new trim to fit
-function repReset(){RP.user=null;RP.beat=null;RP.why='';RP.beatMsg='';RP.note='';RP.plan=null;RP.lv=null;$('repbeat').checked=false;repShow()}
+function repReset(){RP.user=null;RP.lines=null;RP.beat=null;RP.why='';RP.beatMsg='';RP.note='';RP.plan=null;RP.lv=null;$('repbeat').checked=false;repShow()}
 function repShow(){const keep=$('repkeep').checked,el=$('repmsg'),t=[RP.beatMsg,RP.note].filter(Boolean).join(' ');
   $('repbeat').disabled=keep;$('repbeat').parentNode.classList.toggle('off',keep);el.textContent=t;el.hidden=!t}
 /* 10 ms loudness of the whole recording, plus the room-noise level and a loud level (for the breathing-room check) */
@@ -380,7 +402,7 @@ function repNote(){const p=RP.plan;RP.note='';if(p&&!$('repkeep').checked){
   if(p.fix==='Borrowed')RP.note='The last note rings '+p.ext.toFixed(2)+' s past your End so it isn’t cut off.';
   else if(p.fix==='Fade + pause')RP.note='The last note was still sounding, so it fades out with a short pause before each repeat.'}repShow()}
 function repLog(){if(!$('rep').checked)return{};const p=RP.plan||{},b=RP.beat,u=RP.user,du=raw?tDur():0;
-  return{'Repeat Keep Trim':yn($('repkeep').checked),'Repeat In Time':$('repbeat').checked&&b?'Yes':RP.why||'No','Repeat BPM':b?Math.round(b.bpm*10)/10:'','Repeat Beats':b?b.k:'',
+  return{'Repeat Keep Trim':yn($('repkeep').checked),'Repeat In Time':$('repbeat').checked&&b?'Yes':RP.why||'No','Repeat BPM':b?Math.round(b.bpm*10)/10:'','Repeat Grid BPM':b?Math.round(b.gridBpm*10)/10:'','Repeat Guessed Lines':b?Math.round(b.est*100)+'%':'','Repeat Beats':b?b.k:'',
     'Repeat Beat Fit':b?Math.round(b.fit*100)+'%':'','Repeat End On Note':b?yn(b.onNote):'','Repeat Your Trim s':u?r2(du*u.ts/1000)+'-'+r2(du*u.te/1000):'',
     'Repeat Fix':p.fix||'','Repeat Borrow s':p.ext?r2(p.ext):'','Repeat Pause s':p.gap?r2(p.gap):'','Repeat Period s':p.P?Math.round(p.P*1000)/1000:''}}
 async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000),rp=$('rep').checked?repPlan():{fix:'',ext:0,fade:0,gap:0};
@@ -499,6 +521,7 @@ function paintTrim(c,w,h,v,opt){const k=devicePixelRatio||1;if(c.width!==Math.ro
       if(g.roundRect)g.roundRect(kx,(h-kh)/2,kw,kh,4);else g.rect(kx,(h-kh)/2,kw,kh);g.fill();
       g.fillStyle=cs.getPropertyValue('--panel');g.fillRect(kx+5,(h-12)/2,1.5,12);g.fillRect(kx+8,(h-12)/2,1.5,12)}
     g.globalAlpha=1});
+  if(RP.lines&&$('repbeat').checked){g.fillStyle=BEATC;const bh=Math.max(8,h*.3);for(const L of RP.lines){const x=X(L.t);if(x<-2||x>w+2)continue;g.globalAlpha=L.est?.4:1;g.fillRect(x-1,0,2,bh)}g.globalAlpha=1}  // blue beat lines along the top
   if(T.play!==null){const x=X(T.play);g.fillStyle=red;g.fillRect(x-1,0,2,h)}}
 function drawTrim(){if(!raw||live)return;const c=$('cv');paintTrim(c,c.clientWidth,c.clientHeight,tView(),{})}
 /* Magnifier above the trim box: small for rough trim, grows and zooms further for fine trim. MG.g runs 0 (rough) to 1 (fine). */
