@@ -309,6 +309,12 @@ function gridFit(o,p0){let best=null;
     let wh=0,wt=0;for(let i=0;i<o.t.length;i++){let r=((o.t[i]-ph)%p+p)%p;if(r>p/2)r-=p;wt+=o.w[i];if(Math.abs(r)<=tol)wh+=o.w[i]}
     const sc=h+Math.hypot(C,S)/1e3;if(!best||sc>best.sc)best={p,ph,hits:h,frac:h/o.t.length,wf:wh/(wt||1),chance:Math.min(1,2*tol/p),sc}}
   return best}
+/* Drift-tolerant beat check: among notes stronger than the median, how often is the gap to the next one a whole number of beats (p refined ±6%)? */
+function ioiZ(o,p0){const ws=[...o.w].sort((a,b)=>a-b),thr=ws[Math.floor(ws.length/2)]||0,t=o.t.filter((x,i)=>o.w[i]>=thr);let best={z:-9,p:p0};
+  for(let j=-60;j<=60;j+=2){const p=p0*(1+j/1000),tol=Math.max(.035,.1*p),c=Math.min(.99,2*tol/p);let h=0,n=0;
+    for(let i=0;i+1<t.length;i++){const d=t[i+1]-t[i];if(d>2.5)continue;n++;if(Math.abs(d-Math.max(1,Math.round(d/p))*p)<=tol)h++}
+    const z=n?(h-n*c)/Math.sqrt(n*c*(1-c)):-9;if(z>best.z)best={z,p,h,n}}
+  return best}
 /* Steady beat or null. Autocorrelation of the note-start curve, with a gentle preference for 70-150 BPM; then checks half and double tempo. */
 function findBeat(o){if(o.t.length<4)return null;const e=o.env,F=e.length,hs=o.hs,L0=Math.round(.3/hs),L1=Math.min(Math.round(1.5/hs),Math.floor(F/2));if(L1<=L0)return null;
   let m=0;for(let i=0;i<F;i++)m+=e[i];m/=F;const z=Float32Array.from(e,v=>v-m);let r0=0;for(let i=0;i<F;i++)r0+=z[i]*z[i];r0/=F;if(!(r0>0))return null;
@@ -321,9 +327,11 @@ function findBeat(o){if(o.t.length<4)return null;const e=o.env,F=e.length,hs=o.h
   const good=fits.filter(x=>x.frac>=top-.1),g=good.filter(x=>!good.some(y=>y.p>x.p*1.4&&y.frac>=x.frac-.05)).sort((x,y)=>Math.abs(Math.log2(60/x.p/105))-Math.abs(Math.log2(60/y.p/105)))[0],ok=x=>x&&x.p>=.3&&x.p<=1.5;
   // real playing has extra and ornament notes, so don't demand a high share on the grid; ask instead that it beats chance by a wide margin
   const n=o.t.length,zs=(g.hits-n*g.chance)/Math.sqrt(n*g.chance*(1-g.chance));
-  if(!ok(g)||n<12||g.hits<8||g.frac<.35||zs<4.5)return null;
+  // second check that tolerates slow tempo drift in live playing: gaps between neighbouring strong notes should be whole beats
+  const zi=ioiZ(o,g.p);
+  if(!ok(g)||n<12||!((zs>=4.5&&g.hits>=8&&g.frac>=.35)||zi.z>=4))return null;
   const span=o.t[o.t.length-1]-o.t[0];if(span<3*g.p)return null;
-  return{p:g.p,ph:g.ph,frac:g.frac,bpm:60/g.p,z:zs}}
+  return{p:g.p,ph:g.ph,frac:g.frac,bpm:60/g.p,z:zs,zi:zi.z}}
 /* 1 ms loudness curve around t, used to line up two note starts exactly */
 function lv1(t0,n){const d=raw.data,sr=raw.sr,b=Math.max(1,Math.round(sr/1000)),o=new Float32Array(n);
   for(let k=0;k<n;k++){const s=Math.floor(t0*sr)+k*b;let q=0;for(let i=s;i<s+b;i++){const v=i>=0&&i<d.length?d[i]:0;q+=v*v}o[k]=Math.sqrt(q/b)}return o}
