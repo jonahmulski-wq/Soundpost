@@ -18,8 +18,9 @@ h1{font:500 30px/1.1 Fraunces,Georgia,serif;margin:8px 0 4px}
 .sub{color:var(--mute);margin:0 0 18px}
 .wave{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
 #cv.trim{touch-action:none;cursor:ew-resize}
-#mag{position:fixed;z-index:20;width:150px;height:64px;border:2px solid var(--acc);border-radius:10px;background:var(--panel);box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}
-#mag[hidden]{display:none}
+#mag{position:fixed;z-index:20;width:120px;height:52px;border:2px solid var(--acc);border-radius:10px;background:var(--panel);box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}
+#mag[hidden],#maglab[hidden]{display:none}
+#maglab{position:fixed;z-index:21;transform:translateX(-50%);padding:3px 10px;border-radius:7px;background:rgba(0,0,0,.72);color:#fff;font-size:13px;font-weight:600;line-height:18px;white-space:nowrap;pointer-events:none}
 canvas{display:block;width:100%;height:110px}
 .row{display:flex;gap:10px;align-items:center;justify-content:center;margin:16px 0;flex-wrap:wrap}
 button,select{font:inherit;color:inherit}
@@ -81,7 +82,7 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
     <input type="hidden" id="ts" value="0"><input type="hidden" id="te" value="1000">
     <div class="ctl" style="display:block;margin-left:0">Drag the two handles on the waveform. Hold still for a moment to zoom in and fine tune.</div>
     <div class="ctl" style="display:flex;justify-content:space-between;gap:10px;margin-left:0"><span id="tinfo"></span><button class="btn" id="hearcut" type="button" style="padding:7px 13px;font-size:14px;white-space:nowrap">▶ hear the cut</button></div></div>
-<canvas id="mag" hidden></canvas>
+<canvas id="mag" hidden></canvas><div id="maglab" hidden></div>
 <div class="msg" id="msg" role="status">Page loaded. Tap Rec to start.</div>
 <div class="row top">
   <div class="grp"><span class="time" id="tm">0:00</span>
@@ -381,17 +382,29 @@ function paintTrim(c,w,h,v,opt){const k=devicePixelRatio||1;if(c.width!==Math.ro
       if(g.roundRect)g.roundRect(kx,(h-kh)/2,kw,kh,4);else g.rect(kx,(h-kh)/2,kw,kh);g.fill();
       g.fillStyle=cs.getPropertyValue('--panel');g.fillRect(kx+5,(h-12)/2,1.5,12);g.fillRect(kx+8,(h-12)/2,1.5,12)}
     g.globalAlpha=1});
-  if(T.play!==null){const x=X(T.play);g.fillStyle=red;g.fillRect(x-1,0,2,h)}
-  if(opt.label){g.font='600 12px Figtree,system-ui,sans-serif';const tw=g.measureText(opt.label).width;
-    g.fillStyle='rgba(0,0,0,.6)';g.fillRect(4,4,tw+12,20);g.fillStyle='#fff';g.fillText(opt.label,10,18)}}
-function drawTrim(){if(!raw||live)return;const c=$('cv');paintTrim(c,c.clientWidth,c.clientHeight,tView(),{label:T.fine!==null?'Fine tuning':''})}
-function showMag(cx){const m=$('mag'),r=$('cv').getBoundingClientRect(),v=tView(),t=tDur()*$(T.act==='s'?'ts':'te').value/1000,sp=Math.max(.02,v.span/6);
-  m.hidden=false;m.style.left=Math.max(4,Math.min(innerWidth-154,cx-75))+'px';m.style.top=Math.max(4,r.top-74)+'px';
-  paintTrim(m,150,64,{a:t-sp/2,span:sp},{mag:true})}
+  if(T.play!==null){const x=X(T.play);g.fillStyle=red;g.fillRect(x-1,0,2,h)}}
+function drawTrim(){if(!raw||live)return;const c=$('cv');paintTrim(c,c.clientWidth,c.clientHeight,tView(),{})}
+/* Magnifier above the trim box: small for rough trim, grows and zooms further for fine trim. MG.g runs 0 (rough) to 1 (fine). */
+const MG={g:0,cx:0,off:true,raf:0,last:0};
+function showMag(cx){MG.cx=cx;MG.off=false;$('maglab').textContent=T.fine!==null?'Fine trim':'Rough trim';magDraw();magRun()}
+function hideMag(){MG.off=true;if(MG.g)magRun();else magGone()}
+function magGone(){cancelAnimationFrame(MG.raf);MG.raf=0;MG.g=0;MG.off=true;$('mag').hidden=$('maglab').hidden=true}
+function magRun(){if(!MG.raf){MG.last=performance.now();MG.raf=requestAnimationFrame(magStep)}}
+function magStep(now){MG.raf=0;if(!raw||live){magGone();return}
+  const to=!MG.off&&T.fine!==null?1:0,d=Math.max(0,now-MG.last)/250;MG.last=now;
+  MG.g=to>MG.g?Math.min(to,MG.g+d):Math.max(to,MG.g-d);
+  if(MG.off&&!MG.g){magGone();return}
+  magDraw();if(MG.g!==to)MG.raf=requestAnimationFrame(magStep)}
+function magDraw(){const m=$('mag'),l=$('maglab'),r=$('cv').getBoundingClientRect(),e=MG.g*MG.g*(3-2*MG.g),w=Math.round(120+70*e),h=Math.round(52+32*e),
+    t=tDur()*$(T.act==='s'?'ts':'te').value/1000,a=Math.max(.02,tDur()/6),b=Math.max(.02,fineSpan()/6),sp=a*Math.pow(b/a,e),
+    left=Math.max(4,Math.min(innerWidth-w-6,MG.cx-w/2)),top=Math.max(30,r.top-h-10);
+  m.hidden=l.hidden=false;m.style.width=w+'px';m.style.height=h+'px';m.style.left=left+'px';m.style.top=top+'px';
+  l.style.left=Math.max(50,Math.min(innerWidth-50,left+w/2))+'px';l.style.top=(top-28)+'px';
+  paintTrim(m,w,h,{a:t-sp/2,span:sp},{mag:true})}
 function trimText(){const du=tDur(),a=du*$('ts').value/1000,b=du*$('te').value/1000;
   $('tinfo').textContent='Keeping '+a.toFixed(2)+'s to '+b.toFixed(2)+'s of '+du.toFixed(1)+'s'}
 function updTrim(){if(!raw)return;drawTrim();trimText();touch()}
-function trimReset(){hearStop();T.pk=null;T.act='s';T.fine=null;T.drag=null;$('cv').classList.add('trim')}
+function trimReset(){hearStop();T.pk=null;T.act='s';T.fine=null;T.drag=null;magGone();$('cv').classList.add('trim')}
 function setHandle(h,pm){const g=tGap(),s=+$('ts').value,e=+$('te').value;
   pm=h==='s'?Math.max(0,Math.min(pm,e-g)):Math.min(1000,Math.max(pm,s+g));$(h==='s'?'ts':'te').value=Math.round(pm*1000)/1000}
 function holdTimer(){clearTimeout(T.timer);if(T.fine!==null)return;
@@ -408,7 +421,7 @@ $('cv').addEventListener('pointerdown',e=>{if(!raw||live)return;const w=$('cv').
 $('cv').addEventListener('pointermove',e=>{const d=T.drag;if(!d||e.pointerId!==d.id)return;const w=$('cv').clientWidth,v=tView(),x=cvx(e);
   d.x=x;d.cx=e.clientX;const t=v.a+(x+d.off)/w*v.span;setHandle(d.h,t/tDur()*1000);
   if(Math.abs(x-d.sx)>4){d.sx=x;holdTimer()}updTrim();showMag(e.clientX)});
-function endDrag(e){const d=T.drag;if(!d||e.pointerId!==d.id)return;clearTimeout(T.timer);T.drag=null;T.fine=null;$('mag').hidden=true;updTrim()}
+function endDrag(e){const d=T.drag;if(!d||e.pointerId!==d.id)return;clearTimeout(T.timer);T.drag=null;T.fine=null;hideMag();updTrim()}
 $('cv').addEventListener('pointerup',endDrag);$('cv').addEventListener('pointercancel',endDrag);
 function hearStop(){if(T.src){const s=T.src;T.src=null;try{s.onended=null;s.stop()}catch(e){}}T.play=null;$('hearcut').textContent='▶ hear the cut';drawTrim()}
 $('hearcut').onclick=()=>{if(!raw)return;if(T.src){hearStop();return}stopPlay();
