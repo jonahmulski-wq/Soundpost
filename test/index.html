@@ -450,6 +450,9 @@ $('pimg').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image
 ['vshape','vmotion'].forEach(id=>$(id).addEventListener('change',vchg));
 /* ---- Video motion (test V7.4): the zoom/pan is drawn with WebGL so the picture can move by fractions of a pixel.
    iPhone's 2D canvas snaps it to whole pixels, so slow motion moved in visible 1-pixel steps. Returns null if WebGL isn't available. ---- */
+/* Motion timing: speed up over the first RAMP part of the clip, hold a steady speed, slow down over the last RAMP part. p and the result run 0 to 1. */
+const RAMP=.25;
+const moveAt=p=>{const v=1/(1-RAMP);return p<RAMP?v*p*p/(2*RAMP):p>1-RAMP?1-v*(1-p)*(1-p)/(2*RAMP):v*(p-RAMP/2)};
 function glMover(src,W,H){
   const c=document.createElement('canvas');c.width=W;c.height=H;
   const gl=c.getContext('webgl',{alpha:false,antialias:false,preserveDrawingBuffer:true});if(!gl)return null;
@@ -581,14 +584,14 @@ $('vmake').onclick=async()=>{
   if(!window.VideoEncoder&&!recOK){vm('This browser can’t make video here.');return}
   stopPlay();$('vmake').disabled=true;$('vshare').disabled=true;$('vdl').disabled=true;vblob=null;vinfo=null;
   const vid=newId(),tx=id=>$(id).selectedOptions[0].text,names={desert:'Desert sunset',forest:'Misty forest',night:'Starry night',ocean:'Ocean dawn'};
-  const vset={...snapAudio(out.st),'Picture':pic.img?'Uploaded photo':names[pic.kind],'Photo Pixels':pic.img?pic.px:'','Photo KB':pic.img?pic.kb:'','Shape':tx('vshape'),'Motion':tx('vmotion'),'Motion Speed':'Fast'};
+  const vset={...snapAudio(out.st),'Picture':pic.img?'Uploaded photo':names[pic.kind],'Photo Pixels':pic.img?pic.px:'','Photo KB':pic.img?pic.kb:'','Shape':tx('vshape'),'Motion':tx('vmotion'),'Motion Speed':'Fast','Motion Ramp %':RAMP*100};
   $('vmsg').hidden=false;$('vmsg').scrollIntoView({behavior:'smooth',block:'center'});
   let mv=null;
   try{const tall=$('vshape').value==='tall',W=tall?540:720,H=tall?960:720,cv=document.createElement('canvas'),bg=document.createElement('canvas');
     const BW=Math.round(W*1.35),BH=Math.round(H*1.35);cv.width=W;cv.height=H;bg.width=BW;bg.height=BH;const g=cv.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';paint(bg.getContext('2d'),BW,BH);
     const mo=$('vmotion').value,Z=1.35,dur=out.data.length/out.sr;
     try{mv=glMover(bg,W,H)}catch(e){mv=null}
-    const view=p=>{const e=p*p*(3-2*p);let z=1,fx=.5,fy=.5;
+    const view=p=>{const e=moveAt(p);let z=1,fx=.5,fy=.5;
       if(mo==='zin')z=1+(Z-1)*e;else if(mo==='zout')z=Z-(Z-1)*e;else if(mo!=='still'){z=Z;if(mo==='pr')fx=e;else if(mo==='pl')fx=1-e;else if(mo==='pd')fy=e;else fy=1-e}
       if(mv){mv.draw(z,fx,fy);g.drawImage(mv.canvas,0,0)}else{const sc=W*z/BW,sw=BW/z,sh=BH/z;g.drawImage(bg,-(BW-sw)*fx*sc,-(BH-sh)*fy*sc,BW*sc,BH*sc)}
       if(TEST){g.save();g.font='600 '+Math.round(W/40)+'px system-ui,sans-serif';g.textAlign='right';g.textBaseline='top';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.45)';g.fillStyle='rgba(255,255,255,.8)';g.strokeText(vid,W-12,12);g.fillText(vid,W-12,12);g.restore()}};
