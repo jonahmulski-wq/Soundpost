@@ -187,7 +187,7 @@ function snapAudio(st){const ts=+$('ts').value,te=+$('te').value,du=raw.data.len
     'Low Cut':yn(ch('lc')),'Tame Amount':ch('comp')?v('camt'):'Off','Volume dB':ch('volon')?v('vol'):'Off',
     'Echo':yn(ch('echo')),'Echo Delay':ch('echo')?v('edelay'):'','Echo Repeats':ch('echo')?v('efb'):'','Echo Amount':ch('echo')?v('emix'):'',
     'Reverb':yn(ch('rev')),'Reverb Type':ch('rev')?tx('room'):'','Reverb Amount':ch('rev')?v('revmix'):'',
-    'Repeat':yn(ch('rep')),'Repeat Times':ch('rep')?v('reps'):'','Octave':yn(ch('octon')),'Octave Dir':ch('octon')?($('oct').value==='up'?'Higher':'Lower'):'','Octave Amount':ch('octon')?v('octmix'):'',
+    'Repeat':yn(ch('rep')),'Repeat Times':ch('rep')?v('reps'):'','Repeat Crossfade ms':ch('rep')?XF*1000:'','Octave':yn(ch('octon')),'Octave Dir':ch('octon')?($('oct').value==='up'?'Higher':'Lower'):'','Octave Amount':ch('octon')?v('octmix'):'',
     'Water':yn(ch('wat')),'Water Sound':ch('wat')?tx('wsel'):'','Water Volume':ch('wat')?v('watmix'):'','Water Load':ch('wat')?bgStatus:''}}
 function stamp(){const d=new Date(),p=n=>String(n).padStart(2,'0'),o=-d.getTimezoneOffset()/60;
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+' (UTC'+(o>=0?'+':'')+o+')'}
@@ -266,11 +266,14 @@ async function bgData(k,N,sr){
   const T=N/sr,fi=Math.min(.06,T/4),fo=Math.min(1,T*.4),oc=new OfflineAudioContext(1,N,sr),s=oc.createBufferSource(),g=oc.createGain();
   s.buffer=bgBuf[k];s.loop=true;g.gain.setValueAtTime(0,0);g.gain.linearRampToValueAtTime(1,fi);g.gain.setValueAtTime(1,Math.max(fi,T-fo));g.gain.linearRampToValueAtTime(0,T);
   s.connect(g);g.connect(oc.destination);s.start();return(await oc.startRendering()).getChannelData(0)}
+/* Repeat the clip: the copies overlap by this many seconds and crossfade, so a rough trim doesn't pop. */
+const XF=.02;
 async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000);let d=raw.data.slice(s0,Math.floor(n*$('te').value/1000)),off=s0;const sr=raw.sr;let s0s=0;for(let i=0;i<d.length;i++)s0s+=d[i]*d[i];const before=dB(Math.sqrt(s0s/Math.max(1,d.length)));
   if($('octon').checked){const sh=pitch(d,$('oct').value==='up'?2:.5,sr),m=+$('octmix').value/100,y=new Float32Array(d.length);
     for(let i=0;i<d.length;i++)y[i]=d[i]*(1-.35*m)+sh[i]*m;d=y}
-  if($('rep').checked){const n=+$('reps').value,gap=Math.floor(sr*.2),L=d.length+gap,y=new Float32Array(L*n-gap);
-    for(let k=0;k<n;k++)y.set(d,k*L);d=y}
+  if($('rep').checked){const n=+$('reps').value,X=Math.min(Math.floor(sr*XF),Math.floor(d.length/4)),L=d.length-X,c=d.slice(),y=new Float32Array(L*n+X);
+    for(let i=0;i<X;i++){const g=Math.sin(Math.PI/2*i/X);c[i]*=g;c[c.length-1-i]*=g}
+    for(let k=0;k<n;k++)for(let i=0;i<c.length;i++)y[k*L+i]+=c[i];d=y}
   const echo=$('echo').checked,rev=$('rev').checked,dl=+$('edelay').value/1000,fb=+$('efb').value/100,rs=+$('room').value;
   const tail=(echo?dl*7:0)+(rev?rs:0)+.1,oc=new OfflineAudioContext(1,Math.ceil(d.length+tail*sr),sr);
   const buf=oc.createBuffer(1,d.length,sr);buf.copyToChannel(d,0);
@@ -322,7 +325,7 @@ $('player').addEventListener('ended',()=>{if(!busy)stopPlay()});
 let pvRaf=0;
 function pvLoop(){const p=$('player');if(p.paused||p.ended||!raw||live){pvEnd();return}
   const du=tDur(),a=du*$('ts').value/1000,K=du*($('te').value-$('ts').value)/1000;let t=p.currentTime;
-  if($('rep').checked)t=t%(K+.2);
+  if($('rep').checked){const P=K-Math.min(XF,K/4);t-=P*Math.min(+$('reps').value-1,Math.floor(t/P))}
   T.play=a+Math.min(K,t);drawTrim();pvRaf=requestAnimationFrame(pvLoop)}
 function pvEnd(){cancelAnimationFrame(pvRaf);pvRaf=0;if(T.src)return;T.play=null;if(raw&&!live)drawTrim()}
 $('player').addEventListener('playing',()=>{if(!pvRaf&&raw&&!live&&!T.src)pvRaf=requestAnimationFrame(pvLoop)});
