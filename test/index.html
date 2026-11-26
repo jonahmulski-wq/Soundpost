@@ -37,7 +37,10 @@ button,select{font:inherit;color:inherit}
 .fxr input[type=checkbox]{width:20px;height:20px;accent-color:var(--acc)}
 .ctl{display:grid;grid-template-columns:90px 1fr;gap:6px 10px;align-items:center;margin:8px 0 0 30px;color:var(--mute);font-size:14px}
 .ctl input[type=range]{width:100%;accent-color:var(--acc)}
-.fx .ctl{margin-right:10px}  /* room on the right so focus outlines and slider ends are not clipped by the sliding box */
+.fx .ctl{margin-right:10px}
+.ctl.sub{display:flex;gap:10px;align-items:center;color:var(--ink);font-size:15px}
+.ctl.sub.off{opacity:.45}
+.ctl.note{display:block;color:var(--mute);font-size:13px}  /* room on the right so focus outlines and slider ends are not clipped by the sliding box */
 select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
 .msg{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;background:var(--panel);color:var(--ink);font-size:14px}
 audio{width:100%;margin-top:10px}
@@ -111,7 +114,10 @@ audio::-webkit-media-controls-mute-button,audio::-webkit-media-controls-volume-s
     <div class="body"><div><div class="ctl"><span>Space</span><select id="room"><option value="0.8">Small room</option><option value="2" selected>Hall</option><option value="4">Cathedral</option></select>
     <span>Amount</span><input type="range" id="revmix" min="0" max="100" value="50"></div></div></div></div>
   <div class="fxr acc"><label class="t"><input type="checkbox" id="rep"> Repeat the clip</label>
-    <div class="body"><div><div class="ctl"><span>Times</span><select id="reps"><option>2</option><option>3</option><option>4</option></select></div></div></div></div>
+    <div class="body"><div><div class="ctl"><span>Times</span><select id="reps"><option>2</option><option>3</option><option>4</option></select></div>
+    <label class="ctl sub"><input type="checkbox" id="repbeat"> Repeat in time with clip</label>
+    <label class="ctl sub"><input type="checkbox" id="repkeep"> Keep my exact trim</label>
+    <div class="ctl sub note" id="repmsg" hidden></div></div></div></div>
   <div class="fxr acc"><label class="t"><input type="checkbox" id="octon"> Octave layer</label>
     <div class="body"><div><div class="ctl"><span>Layer</span><select id="oct"><option value="down">One octave lower</option><option value="up">One octave higher</option></select>
     <span>Amount</span><input type="range" id="octmix" min="10" max="100" value="55"></div></div></div></div>
@@ -188,7 +194,7 @@ function snapAudio(st){const ts=+$('ts').value,te=+$('te').value,du=raw.data.len
     'Low Cut':yn(ch('lc')),'Tame Amount':ch('comp')?v('camt'):'Off','Volume dB':ch('volon')?v('vol'):'Off',
     'Echo':yn(ch('echo')),'Echo Delay':ch('echo')?v('edelay'):'','Echo Repeats':ch('echo')?v('efb'):'','Echo Amount':ch('echo')?v('emix'):'',
     'Reverb':yn(ch('rev')),'Reverb Type':ch('rev')?tx('room'):'','Reverb Amount':ch('rev')?v('revmix'):'',
-    'Repeat':yn(ch('rep')),'Repeat Times':ch('rep')?v('reps'):'','Repeat Crossfade ms':ch('rep')?XF*1000:'','Octave':yn(ch('octon')),'Octave Dir':ch('octon')?($('oct').value==='up'?'Higher':'Lower'):'','Octave Amount':ch('octon')?v('octmix'):'',
+    'Repeat':yn(ch('rep')),'Repeat Times':ch('rep')?v('reps'):'','Repeat Crossfade ms':ch('rep')?XF*1000:'',...repLog(),'Octave':yn(ch('octon')),'Octave Dir':ch('octon')?($('oct').value==='up'?'Higher':'Lower'):'','Octave Amount':ch('octon')?v('octmix'):'',
     'Water':yn(ch('wat')),'Water Sound':ch('wat')?tx('wsel'):'','Water Volume':ch('wat')?v('watmix'):'','Water Load':ch('wat')?bgStatus:''}}
 function stamp(){const d=new Date(),p=n=>String(n).padStart(2,'0'),o=-d.getTimezoneOffset()/60;
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+' (UTC'+(o>=0?'+':'')+o+')'}
@@ -227,7 +233,7 @@ function drawLive(pk){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.
 
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
-  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;trimReset();updTrim();setPrev(false);$('share').disabled=false;$('dl').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;raw.clip=cl;
+  raw={data:d,sr:b.sampleRate};repReset();$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;trimReset();updTrim();setPrev(false);$('share').disabled=false;$('dl').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;raw.clip=cl;
   msg(cl>20?'Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the instrument helps. Select “Tame harsh notes” below to soften it, but not fully repair it.':'Trim the ends above, choose effects below, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
@@ -269,12 +275,112 @@ async function bgData(k,N,sr){
   s.connect(g);g.connect(oc.destination);s.start();return(await oc.startRendering()).getChannelData(0)}
 /* Repeat the clip: the copies overlap by this many seconds and crossfade, so a rough trim doesn't pop. */
 const XF=.02;
-async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000);let d=raw.data.slice(s0,Math.floor(n*$('te').value/1000)),off=s0;const sr=raw.sr;let s0s=0;for(let i=0;i<d.length;i++)s0s+=d[i]*d[i];const before=dB(Math.sqrt(s0s/Math.max(1,d.length)));
+/* ---- Smarter Repeat (test, Nov 26). Three parts:
+   1. "Repeat in time with clip": find note starts (spectral flux), estimate the beat, then move Start to the nearest note (or beat)
+      and End so each repeat is a whole number of beats. The 20 ms crossfade is added on top, so copies start exactly one phrase apart.
+   2. Breathing-room check (Repeat on, no beat in use, exact trim off): quiet end = crossfade only; a note still ringing = borrow up to
+      BR_MAX s past End if it dies away before a new note; otherwise fade the end and add a short pause.
+   3. "Keep my exact trim": none of the above, just the 20 ms crossfade. ---- */
+const RP={user:null,beat:null,why:'',beatMsg:'',note:'',plan:null,lv:null};
+const BR_MAX=1,BR_FADE=.25,BR_GAP=.35,BR_GAP_FX=.45,PRE=.035;  // borrow limit, fade-out, pause (longer with echo/reverb), lead-in before a note
+function fftR(re,im){const n=re.length;
+  for(let i=1,j=0;i<n;i++){let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){let t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t}}
+  for(let len=2;len<=n;len<<=1){const h=len>>1,a=-2*Math.PI/len,wr=Math.cos(a),wi=Math.sin(a);
+    for(let i=0;i<n;i+=len){let cr=1,ci=0;for(let k=0;k<h;k++){const p=i+k,q=p+h,tr=re[q]*cr-im[q]*ci,ti=re[q]*ci+im[q]*cr;
+      re[q]=re[p]-tr;im[q]=im[p]-ti;re[p]+=tr;im[p]+=ti;const t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t}}}}
+/* Note starts between a and b seconds: returns {t:[times], w:[strengths], env, hop, t0}. Flux on log spectrum, so pitch changes count, not just loudness. */
+function noteStarts(a,b){const d=raw.data,sr=raw.sr,N=1024,i0=Math.max(0,Math.floor(a*sr)),i1=Math.min(d.length,Math.floor(b*sr)),
+    hop=Math.max(Math.round(sr*.005),Math.ceil((i1-i0)/8000)),F=Math.max(0,Math.floor((i1-i0-N)/hop)+1),nb=Math.min(N/2,Math.floor(8000/sr*N)),
+    win=new Float32Array(N),re=new Float32Array(N),im=new Float32Array(N),prev=new Float32Array(nb),env=new Float32Array(F),hs=hop/sr,t0=(i0+N/2)/sr;
+  for(let i=0;i<N;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/N);
+  for(let f=0;f<F;f++){const s=i0+f*hop;for(let i=0;i<N;i++){re[i]=d[s+i]*win[i];im[i]=0}fftR(re,im);let fl=0;
+    for(let k=1;k<nb;k++){const m=Math.log(1+400*Math.hypot(re[k],im[k])/N);if(f&&m>prev[k])fl+=m-prev[k];prev[k]=m}env[f]=fl}
+  const W=Math.round(.25/hs),P=new Float64Array(F+1);for(let f=0;f<F;f++)P[f+1]=P[f]+env[f];
+  let mx=0;for(let f=0;f<F;f++)mx=Math.max(mx,env[f]);const gm=P[F]/Math.max(1,F),R=Math.max(1,Math.round(.04/hs)),t=[],w=[];
+  for(let f=1;f<F-1;f++){const v=env[f];if(v<.08*mx)continue;const lo=Math.max(0,f-W),hi=Math.min(F,f+W+1),lm=(P[hi]-P[lo])/(hi-lo);
+    if(v<lm*1.4+gm*.3)continue;let pk=true;for(let j=Math.max(0,f-R);j<=Math.min(F-1,f+R);j++)if(env[j]>v||(env[j]===v&&j<f)){pk=false;break}
+    if(!pk)continue;const tt=t0+f*hs;if(t.length&&tt-t[t.length-1]<.08){if(v>w[w.length-1]){t[t.length-1]=tt;w[w.length-1]=v}continue}t.push(tt);w.push(v)}
+  return{t,w,env,hs,t0}}
+/* How well the note starts sit on a grid of period p (refined ±3%): {p,ph,frac,hits} */
+function gridFit(o,p0){let best=null;
+  for(let j=-30;j<=30;j++){const p=p0*(1+j/1000),tol=Math.max(.035,.1*p);let C=0,S=0;
+    for(let i=0;i<o.t.length;i++){const a=2*Math.PI*o.t[i]/p;C+=o.w[i]*Math.cos(a);S+=o.w[i]*Math.sin(a)}
+    const ph=Math.atan2(S,C)/(2*Math.PI)*p;let h=0;for(const x of o.t){let r=((x-ph)%p+p)%p;if(r>p/2)r-=p;if(Math.abs(r)<=tol)h++}
+    const sc=h+Math.hypot(C,S)/1e3;if(!best||sc>best.sc)best={p,ph,hits:h,frac:h/o.t.length,sc}}
+  return best}
+/* Steady beat or null. Autocorrelation of the note-start curve, with a gentle preference for 70-150 BPM; then checks half and double tempo. */
+function findBeat(o){if(o.t.length<4)return null;const e=o.env,F=e.length,hs=o.hs,L0=Math.round(.3/hs),L1=Math.min(Math.round(1.5/hs),Math.floor(F/2));if(L1<=L0)return null;
+  let m=0;for(let i=0;i<F;i++)m+=e[i];m/=F;const z=Float32Array.from(e,v=>v-m);let r0=0;for(let i=0;i<F;i++)r0+=z[i]*z[i];r0/=F;if(!(r0>0))return null;
+  const ac=new Float32Array(L1+2);for(let L=L0-1;L<=L1+1;L++){let s=0;for(let i=0;i+L<F;i++)s+=z[i]*z[i+L];ac[L]=s/(F-L)}
+  let bL=0,bs=-1;for(let L=L0;L<=L1;L++){if(ac[L]<ac[L-1]||ac[L]<ac[L+1])continue;const bpm=60/(L*hs),s=ac[L]*Math.exp(-.5*Math.pow(Math.log2(bpm/105)/1.1,2));if(s>bs){bs=s;bL=L}}
+  if(!bL||ac[bL]/r0<.1)return null;
+  const y0=ac[bL-1],y1=ac[bL],y2=ac[bL+1],dd=y0-2*y1+y2,p=(bL+(dd?.5*(y0-y2)/dd:0))*hs;
+  // try related tempos (half, third, double, triple): among those that fit the notes nearly as well as the best, take the one closest to 105 BPM
+  const fits=[1,1/2,1/3,2,3].map(m=>p*m).filter(x=>x>=.3&&x<=1.5).map(x=>gridFit(o,x)),top=Math.max(...fits.map(x=>x.frac));
+  const good=fits.filter(x=>x.frac>=top-.1),g=good.filter(x=>!good.some(y=>y.p>x.p*1.4&&y.frac>=x.frac-.05)).sort((x,y)=>Math.abs(Math.log2(60/x.p/105))-Math.abs(Math.log2(60/y.p/105)))[0],ok=x=>x&&x.p>=.3&&x.p<=1.5;
+  if(!ok(g)||g.hits<4||g.frac<.6)return null;
+  const span=o.t[o.t.length-1]-o.t[0];if(span<3*g.p)return null;
+  return{p:g.p,ph:g.ph,frac:g.frac,bpm:60/g.p}}
+/* 1 ms loudness curve around t, used to line up two note starts exactly */
+function lv1(t0,n){const d=raw.data,sr=raw.sr,b=Math.max(1,Math.round(sr/1000)),o=new Float32Array(n);
+  for(let k=0;k<n;k++){const s=Math.floor(t0*sr)+k*b;let q=0;for(let i=s;i<s+b;i++){const v=i>=0&&i<d.length?d[i]:0;q+=v*v}o[k]=Math.sqrt(q/b)}return o}
+function alignTo(t1,t2){const A=lv1(t1-.03,150);let best=0,bc=-Infinity;
+  for(let s=-25;s<=25;s++){const B=lv1(t2+s/1000-.03,150);let c=0,na=0,nb=0;for(let i=0;i<150;i++){c+=A[i]*B[i];na+=A[i]*A[i];nb+=B[i]*B[i]}c/=Math.sqrt(na*nb)||1;if(c>bc){bc=c;best=s}}
+  return t2+best/1000}
+const setT=(id,t)=>$(id).value=Math.round(Math.max(0,Math.min(1,t/tDur()))*1e6)/1000;
+function repSnap(){const du=tDur(),u=RP.user,us=du*u.ts/1000,ue=du*u.te/1000,a=Math.max(0,us-2),b=Math.min(du,Math.max(ue+2,a+4),a+40);
+  const o=noteStarts(a,b),bt=findBeat(o);RP.beat=null;
+  const fail=why=>{RP.why=why;RP.beatMsg=why==='Too short'?'This clip is too short to repeat in time. Using the breathing-room check instead.':'Couldn’t find a steady beat. Using the breathing-room check instead.';
+    $('repbeat').checked=false;$('ts').value=u.ts;$('te').value=u.te;RP.user=null;updTrim();repShow();return false};
+  if(!bt)return fail('No steady beat');
+  const p=bt.p,near=(t,r)=>{let x=null;for(const v of o.t)if(Math.abs(v-t)<=r&&(x===null||Math.abs(v-t)<Math.abs(x-t)))x=v;return x};
+  let s0=near(us+PRE,Math.min(.5,.6*p));if(s0===null)s0=bt.ph+Math.round((us+PRE-bt.ph)/p)*p;
+  let k=Math.max(1,Math.round((ue-us)/p)),P=0,hit=false;
+  for(;k>=1;k--){const tg=s0+k*p;if(tg-PRE+XF>du)continue;const e1=near(tg,.15*p);
+    if(e1!==null&&e1-PRE+XF<=du){P=alignTo(s0,e1)-s0;hit=true}else P=k*p;break}
+  if(k<1)return fail('Too short');
+  const s=Math.max(0,s0-PRE);setT('ts',s);setT('te',Math.min(du,s+P+XF));
+  RP.beat={bpm:bt.bpm,k,P,onNote:hit,fit:bt.frac};RP.why='';
+  RP.beatMsg='In time: about '+Math.round(bt.bpm)+' beats per minute, '+k+' beat'+(k>1?'s':'')+' per repeat. Start and End moved to fit. Uncheck to get your trim back.';
+  updTrim();repShow();return true}
+function repBeatOn(){if(!raw)return;if(!RP.user)RP.user={ts:+$('ts').value,te:+$('te').value};repSnap()}
+function repBeatOff(){if(RP.user){$('ts').value=RP.user.ts;$('te').value=RP.user.te;RP.user=null;updTrim()}RP.beat=null;RP.beatMsg='';repShow()}
+function repDragged(){if(!$('repbeat').checked||!raw)return;RP.user={ts:+$('ts').value,te:+$('te').value};repSnap()}  // a hand-moved handle becomes the new trim to fit
+function repReset(){RP.user=null;RP.beat=null;RP.why='';RP.beatMsg='';RP.note='';RP.plan=null;RP.lv=null;$('repbeat').checked=false;repShow()}
+function repShow(){const keep=$('repkeep').checked,el=$('repmsg'),t=[RP.beatMsg,RP.note].filter(Boolean).join(' ');
+  $('repbeat').disabled=keep;$('repbeat').parentNode.classList.toggle('off',keep);el.textContent=t;el.hidden=!t}
+/* 10 ms loudness of the whole recording, plus the room-noise level and a loud level (for the breathing-room check) */
+function repLevels(){if(RP.lv)return RP.lv;const d=raw.data,sr=raw.sr,b=Math.round(sr*.01),n=Math.floor(d.length/b),v=new Float32Array(n);
+  for(let k=0;k<n;k++){let q=0;for(let i=k*b;i<k*b+b;i++)q+=d[i]*d[i];v[k]=Math.sqrt(q/b)}
+  const s=Float32Array.from(v).sort(),pc=x=>s[Math.min(n-1,Math.floor(x*n))]||0,floor=pc(.1),loud=pc(.95);
+  return RP.lv={v,b:.01,floor,loud,quiet:Math.max(floor*2.5,loud*.06,1e-4)}}
+/* What Repeat should do at the seam. ext: seconds borrowed past End; fade/gap: seconds of fade-out and pause before the next copy. */
+function repPlan(){const keep=$('repkeep').checked;
+  if(keep)return{fix:'Exact trim',ext:0,fade:0,gap:0};
+  if($('repbeat').checked&&RP.beat)return{fix:'In time',ext:0,fade:0,gap:0};
+  const L=repLevels(),du=tDur(),te=du*$('te').value/1000,ts=du*$('ts').value/1000,f=x=>Math.max(0,Math.min(L.v.length-1,Math.floor(x/L.b)));
+  let end=0;for(let k=f(te-.04);k<=f(te-.001);k++)end=Math.max(end,L.v[k]);
+  if(end<=L.quiet||te-ts<.3)return{fix:'Crossfade',ext:0,fade:0,gap:0};
+  let lo=end;for(let k=f(te);k<L.v.length&&(k*L.b-te)<BR_MAX;k++){const v=L.v[k];
+    if(v<=L.quiet&&L.v[k+1]<=L.quiet&&L.v[k+2]<=L.quiet){const ext=Math.min(BR_MAX,k*L.b-te+XF);return{fix:'Borrowed',ext,fade:0,gap:0}}  // quiet for 30 ms, not just a gap between legato notes
+    if(v>lo*2&&v>L.quiet*2)break;lo=Math.min(lo,v)}                  // a new note starts: don't borrow into it
+  return{fix:'Fade + pause',ext:0,fade:Math.min(BR_FADE,(te-ts)/3),gap:$('echo').checked||$('rev').checked?BR_GAP_FX:BR_GAP}}
+function repNote(){const p=RP.plan;RP.note='';if(p&&!$('repkeep').checked){
+  if(p.fix==='Borrowed')RP.note='The last note rings '+p.ext.toFixed(2)+' s past your End so it isn’t cut off.';
+  else if(p.fix==='Fade + pause')RP.note='The last note was still sounding, so it fades out with a short pause before each repeat.'}repShow()}
+function repLog(){if(!$('rep').checked)return{};const p=RP.plan||{},b=RP.beat,u=RP.user,du=raw?tDur():0;
+  return{'Repeat Keep Trim':yn($('repkeep').checked),'Repeat In Time':$('repbeat').checked&&b?'Yes':RP.why||'No','Repeat BPM':b?Math.round(b.bpm*10)/10:'','Repeat Beats':b?b.k:'',
+    'Repeat Beat Fit':b?Math.round(b.fit*100)+'%':'','Repeat End On Note':b?yn(b.onNote):'','Repeat Your Trim s':u?r2(du*u.ts/1000)+'-'+r2(du*u.te/1000):'',
+    'Repeat Fix':p.fix||'','Repeat Borrow s':p.ext?r2(p.ext):'','Repeat Pause s':p.gap?r2(p.gap):'','Repeat Period s':p.P?Math.round(p.P*1000)/1000:''}}
+async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000),rp=$('rep').checked?repPlan():{fix:'',ext:0,fade:0,gap:0};
+  let d=raw.data.slice(s0,Math.min(n,Math.floor(n*$('te').value/1000)+Math.round(rp.ext*raw.sr))),off=s0;const sr=raw.sr;let s0s=0;for(let i=0;i<d.length;i++)s0s+=d[i]*d[i];const before=dB(Math.sqrt(s0s/Math.max(1,d.length)));
   if($('octon').checked){const sh=pitch(d,$('oct').value==='up'?2:.5,sr),m=+$('octmix').value/100,y=new Float32Array(d.length);
     for(let i=0;i<d.length;i++)y[i]=d[i]*(1-.35*m)+sh[i]*m;d=y}
-  if($('rep').checked){const n=+$('reps').value,X=Math.min(Math.floor(sr*XF),Math.floor(d.length/4)),L=d.length-X,c=d.slice(),y=new Float32Array(L*n+X);
+  RP.plan=null;
+  if($('rep').checked){const n=+$('reps').value,X=Math.min(Math.floor(sr*XF),Math.floor(d.length/4)),G=Math.round(rp.gap*sr),L=G?d.length+G:d.length-X,c=d.slice(),y=new Float32Array(L*(n-1)+c.length);
     for(let i=0;i<X;i++){const g=Math.sin(Math.PI/2*i/X);c[i]*=g;c[c.length-1-i]*=g}
-    for(let k=0;k<n;k++)for(let i=0;i<c.length;i++)y[k*L+i]+=c[i];d=y}
+    const F=Math.min(Math.round(rp.fade*sr),Math.floor(c.length/3));for(let i=0;i<F;i++)c[c.length-1-i]*=.5-.5*Math.cos(Math.PI*i/F);  // gentle fade-out (breathing room c)
+    for(let k=0;k<n;k++)for(let i=0;i<c.length;i++)y[k*L+i]+=c[i];d=y;RP.plan={P:L/sr,len:c.length/sr,...rp}}
   const echo=$('echo').checked,rev=$('rev').checked,dl=+$('edelay').value/1000,fb=+$('efb').value/100,rs=+$('room').value;
   const tail=(echo?dl*7:0)+(rev?rs:0)+.1,oc=new OfflineAudioContext(1,Math.ceil(d.length+tail*sr),sr);
   const buf=oc.createBuffer(1,d.length,sr);buf.copyToChannel(d,0);
@@ -326,14 +432,14 @@ $('player').addEventListener('ended',()=>{if(!busy)stopPlay()});
 let pvRaf=0;
 function pvLoop(){const p=$('player');if(p.paused||p.ended||!raw||live){pvEnd();return}
   const du=tDur(),a=du*$('ts').value/1000,K=du*($('te').value-$('ts').value)/1000;let t=p.currentTime;
-  if($('rep').checked){const P=K-Math.min(XF,K/4);t-=P*Math.min(+$('reps').value-1,Math.floor(t/P))}
-  T.play=a+Math.min(K,t);drawTrim();pvRaf=requestAnimationFrame(pvLoop)}
+  if($('rep').checked&&RP.plan){const P=RP.plan.P;t-=P*Math.min(+$('reps').value-1,Math.floor(t/P));T.play=a+Math.min(RP.plan.len,t)}
+  else T.play=a+Math.min(K,t);drawTrim();pvRaf=requestAnimationFrame(pvLoop)}
 function pvEnd(){cancelAnimationFrame(pvRaf);pvRaf=0;if(T.src)return;T.play=null;if(raw&&!live)drawTrim()}
 $('player').addEventListener('playing',()=>{if(!pvRaf&&raw&&!live&&!T.src)pvRaf=requestAnimationFrame(pvLoop)});
 $('player').addEventListener('pause',pvEnd);$('player').addEventListener('ended',pvEnd);
 const kind=()=>blob&&blob.type!=='audio/mpeg'?'WAV':'MP3';
 async function ready(){if(!raw)return false;if(blob&&!dirty&&out)return true;
-  out=await render();if(!raw)draw(out.data);blob=mp3(out.data,out.sr);
+  out=await render();repNote();if(!raw)draw(out.data);blob=mp3(out.data,out.sr);
   if(TEST){blobInfo={ID:newId(),...snapAudio(out.st)};blob=id3(blob,'Soundpost '+blobInfo.ID)}
   $('share').textContent='Share '+kind();$('dl').textContent='Download '+kind();
   const old=$('player').src;$('player').src=URL.createObjectURL(blob);$('player').hidden=false;if(old)URL.revokeObjectURL(old);
@@ -357,7 +463,7 @@ $('share').onclick=async()=>{const had=blob&&!dirty;if(!await prep(msg))return;
     try{logIt('Share',kind(),blobInfo,blob);await navigator.share({files:[f],title:'My Soundpost recording'});return}catch(e){if(e.name==='AbortError')return;if(!had){msg('Your '+kind()+' is ready. Tap Share '+kind()+' again.');return}}}
   msg('The share sheet isn’t available here. Use Download '+kind()+' instead.')};
 
-function touch(){dirty=true;$('vshare').disabled=true;$('vdl').disabled=true}
+function touch(){dirty=true;if(RP.note){RP.note='';repShow()}$('vshare').disabled=true;$('vdl').disabled=true}
 /* ---- Trim: two handles on the waveform (values stay in ts/te, 0-1000) ---- */
 const knobX=(id,x,w,kw)=>id==='s'?(x-kw<0?x:x-kw):(x+kw>w?x-kw:x);
 const T={act:'s',drag:null,fine:null,timer:0,pk:null,pkw:0,src:null,play:null};
@@ -421,7 +527,7 @@ $('cv').addEventListener('pointerdown',e=>{if(!raw||live)return;const w=$('cv').
 $('cv').addEventListener('pointermove',e=>{const d=T.drag;if(!d||e.pointerId!==d.id)return;const w=$('cv').clientWidth,v=tView(),x=cvx(e);
   d.x=x;d.cx=e.clientX;const t=v.a+(x+d.off)/w*v.span;setHandle(d.h,t/tDur()*1000);
   if(Math.abs(x-d.sx)>4){d.sx=x;holdTimer()}updTrim();showMag(e.clientX)});
-function endDrag(e){const d=T.drag;if(!d||e.pointerId!==d.id)return;clearTimeout(T.timer);T.drag=null;T.fine=null;hideMag();updTrim()}
+function endDrag(e){const d=T.drag;if(!d||e.pointerId!==d.id)return;clearTimeout(T.timer);T.drag=null;T.fine=null;hideMag();updTrim();repDragged()}
 $('cv').addEventListener('pointerup',endDrag);$('cv').addEventListener('pointercancel',endDrag);
 function hearStop(){if(T.src){const s=T.src;T.src=null;try{s.onended=null;s.stop()}catch(e){}}T.play=null;$('hearcut').textContent='▶ hear the cut';drawTrim()}
 $('hearcut').onclick=()=>{if(!raw)return;if(T.src){hearStop();return}stopPlay();
@@ -641,6 +747,9 @@ function save(b,name){const a=document.createElement('a');a.href=URL.createObjec
 $('dl').onclick=async()=>{if(!await prep(msg))return;logIt('Download',kind(),blobInfo,blob);save(blob,aname())};
 $('vdl').onclick=()=>{if(vblob){logIt('Download','Video',vinfo,vblob);save(vblob,vname())}};
 document.querySelectorAll('.fx input,.fx select').forEach(el=>el.addEventListener('input',touch));
+$('repbeat').addEventListener('change',()=>{if($('repbeat').checked)repBeatOn();else{RP.why='';repBeatOff()}});
+$('repkeep').addEventListener('change',()=>{if($('repkeep').checked&&$('repbeat').checked){$('repbeat').checked=false;repBeatOff()}RP.note='';repShow()});
+$('rep').addEventListener('change',()=>{if(!$('rep').checked&&$('repbeat').checked){$('repbeat').checked=false;repBeatOff()}});
 document.querySelectorAll('.fxr.acc').forEach(r=>{const c=r.querySelector('input[type=checkbox]'),f=()=>r.classList.toggle('open',c.checked);c.addEventListener('change',f);f()});
 function fitBig(){const e=document.querySelector('.sec.big');let f=24;e.style.fontSize=f+'px';while(e.scrollWidth>e.clientWidth&&f>10){f-=.25;e.style.fontSize=f+'px'}}
 fitBig();if(document.fonts)document.fonts.ready.then(fitBig);
