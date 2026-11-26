@@ -317,7 +317,7 @@ function ioiZ(o,p0){const ws=[...o.w].sort((a,b)=>a-b),thr=ws[Math.floor(ws.leng
     const z=n?(h-n*c)/Math.sqrt(n*c*(1-c)):-9;if(z>best.z)best={z,p,h,n}}
   return best}
 /* Steady beat or null. Autocorrelation of the note-start curve, with a gentle preference for 70-150 BPM; then checks half and double tempo. */
-function findBeat(o){if(o.t.length<4)return null;const e=o.env,F=e.length,hs=o.hs,L0=Math.round(.3/hs),L1=Math.min(Math.round(1.5/hs),Math.floor(F/2));if(L1<=L0)return null;
+function findBeat(o){RP.sc=o.t.length+' notes';if(o.t.length<4)return null;const e=o.env,F=e.length,hs=o.hs,L0=Math.round(.3/hs),L1=Math.min(Math.round(1.5/hs),Math.floor(F/2));if(L1<=L0)return null;
   let m=0;for(let i=0;i<F;i++)m+=e[i];m/=F;const z=Float32Array.from(e,v=>v-m);let r0=0;for(let i=0;i<F;i++)r0+=z[i]*z[i];r0/=F;if(!(r0>0))return null;
   const ac=new Float32Array(L1+2);for(let L=L0-1;L<=L1+1;L++){let s=0;for(let i=0;i+L<F;i++)s+=z[i]*z[i+L];ac[L]=s/(F-L)}
   let bL=0,bs=-1;for(let L=L0;L<=L1;L++){if(ac[L]<ac[L-1]||ac[L]<ac[L+1])continue;const bpm=60/(L*hs),s=ac[L]*Math.exp(-.5*Math.pow(Math.log2(bpm/105)/1.1,2));if(s>bs){bs=s;bL=L}}
@@ -333,6 +333,7 @@ function findBeat(o){if(o.t.length<4)return null;const e=o.env,F=e.length,hs=o.h
   const zi=[g.p,g.p/2].filter(x=>x>=.15).map(x=>ioiZ(o,x)).reduce((a,b)=>b.z>a.z?b:a);  // half-beat notes count as on the beat too
   // third check: only the strong notes (40%+ of the loudest start), e.g. the main "boom"s with softer in-between sounds left out
   const mx=Math.max(...o.w),so={t:o.t.filter((x,i)=>o.w[i]>=.4*mx),w:o.w.filter(x=>x>=.4*mx)},zst=so.t.length>=10?Math.max(...[g.p,g.p/2].filter(x=>x>=.15).map(x=>{const f=gridFit(so,x);return(f.hits-so.t.length*f.chance)/Math.sqrt(so.t.length*f.chance*(1-f.chance))})):-9;
+  RP.sc=[n,Math.round(60/g.p),zs,zi.z,zst].map(x=>Math.round(x*10)/10).join(' / ');  // notes / grid BPM / grid, note-gap and strong-note scores (pass: 4.5, 4, 4.5)
   if(!ok(g)||n<12||!((zs>=4.5&&g.hits>=8&&g.frac>=.35)||zi.z>=4||zst>=4.5))return null;
   const span=o.t[o.t.length-1]-o.t[0];if(span<3*g.p)return null;
   return{p:g.p,ph:g.ph,frac:g.frac,bpm:60/g.p,z:zs,zi:zi.z,zst}}
@@ -405,7 +406,7 @@ function repNote(){const p=RP.plan;RP.note='';if(p&&!$('repkeep').checked){
   if(p.fix==='Borrowed')RP.note='The last note rings '+p.ext.toFixed(2)+' s past your End so it isn’t cut off.';
   else if(p.fix==='Fade + pause')RP.note='The last note was still sounding, so it fades out with a short pause before each repeat.'}repShow()}
 function repLog(){if(!$('rep').checked)return{};const p=RP.plan||{},b=RP.beat,u=RP.user,du=raw?tDur():0;
-  return{'Repeat Keep Trim':yn($('repkeep').checked),'Repeat In Time':$('repbeat').checked&&b?'Yes':RP.why||'No','Repeat BPM':b?Math.round(b.bpm*10)/10:'','Repeat Grid BPM':b?Math.round(b.gridBpm*10)/10:'','Repeat Guessed Lines':b?Math.round(b.est*100)+'%':'','Repeat Beats':b?b.k:'',
+  return{'Repeat Keep Trim':yn($('repkeep').checked),'Repeat In Time':$('repbeat').checked&&b?'Yes':RP.why||'No','Repeat BPM':b?Math.round(b.bpm*10)/10:'','Repeat Beat Scores':$('repbeat').checked||RP.why?RP.sc||'':'','Repeat Grid BPM':b?Math.round(b.gridBpm*10)/10:'','Repeat Guessed Lines':b?Math.round(b.est*100)+'%':'','Repeat Beats':b?b.k:'',
     'Repeat Beat Fit':b?Math.round(b.fit*100)+'%':'','Repeat End On Note':b?yn(b.onNote):'','Repeat Your Trim s':u?r2(du*u.ts/1000)+'-'+r2(du*u.te/1000):'',
     'Repeat Fix':p.fix||'','Repeat Borrow s':p.ext?r2(p.ext):'','Repeat Pause s':p.gap?r2(p.gap):'','Repeat Period s':p.P?Math.round(p.P*1000)/1000:''}}
 async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000),rp=$('rep').checked?repPlan():{fix:'',ext:0,fade:0,gap:0};
