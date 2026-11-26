@@ -324,15 +324,18 @@ function findBeat(o){if(o.t.length<4)return null;const e=o.env,F=e.length,hs=o.h
   if(!bL||ac[bL]/r0<.1)return null;
   const y0=ac[bL-1],y1=ac[bL],y2=ac[bL+1],dd=y0-2*y1+y2,p=(bL+(dd?.5*(y0-y2)/dd:0))*hs;
   // try related tempos (half, third, double, triple): among those that fit the notes nearly as well as the best, take the one closest to 105 BPM
-  const fits=[1,1/2,1/3,2,3].map(m=>p*m).filter(x=>x>=.3&&x<=1.5).map(x=>gridFit(o,x)),top=Math.max(...fits.map(x=>x.frac));
-  const good=fits.filter(x=>x.frac>=top-.1),g=good.filter(x=>!good.some(y=>y.p>x.p*1.4&&y.frac>=x.frac-.05)).sort((x,y)=>Math.abs(Math.log2(60/x.p/105))-Math.abs(Math.log2(60/y.p/105)))[0],ok=x=>x&&x.p>=.3&&x.p<=1.5;
+  const fits=[1,1/2,1/3,2,3].map(m=>p*m).filter(x=>x>=.2&&x<=1.5).map(x=>gridFit(o,x)),top=Math.max(...fits.map(x=>x.frac));
+  const good=fits.filter(x=>x.frac>=top-.1),g=good.filter(x=>!good.some(y=>y.p>x.p*1.4&&y.frac>=x.frac-.05)).sort((x,y)=>Math.abs(Math.log2(60/x.p/105))-Math.abs(Math.log2(60/y.p/105)))[0],ok=x=>x&&x.p>=.2&&x.p<=1.5;  // fast grids (up to 300) are fine here: footPulse halves them later
+
   // real playing has extra and ornament notes, so don't demand a high share on the grid; ask instead that it beats chance by a wide margin
   const n=o.t.length,zs=(g.hits-n*g.chance)/Math.sqrt(n*g.chance*(1-g.chance));
   // second check that tolerates slow tempo drift in live playing: gaps between neighbouring strong notes should be whole beats
-  const zi=ioiZ(o,g.p);
-  if(!ok(g)||n<12||!((zs>=4.5&&g.hits>=8&&g.frac>=.35)||zi.z>=4))return null;
+  const zi=[g.p,g.p/2].filter(x=>x>=.15).map(x=>ioiZ(o,x)).reduce((a,b)=>b.z>a.z?b:a);  // half-beat notes count as on the beat too
+  // third check: only the strong notes (40%+ of the loudest start), e.g. the main "boom"s with softer in-between sounds left out
+  const mx=Math.max(...o.w),so={t:o.t.filter((x,i)=>o.w[i]>=.4*mx),w:o.w.filter(x=>x>=.4*mx)},zst=so.t.length>=10?Math.max(...[g.p,g.p/2].filter(x=>x>=.15).map(x=>{const f=gridFit(so,x);return(f.hits-so.t.length*f.chance)/Math.sqrt(so.t.length*f.chance*(1-f.chance))})):-9;
+  if(!ok(g)||n<12||!((zs>=4.5&&g.hits>=8&&g.frac>=.35)||zi.z>=4||zst>=4.5))return null;
   const span=o.t[o.t.length-1]-o.t[0];if(span<3*g.p)return null;
-  return{p:g.p,ph:g.ph,frac:g.frac,bpm:60/g.p,z:zs,zi:zi.z}}
+  return{p:g.p,ph:g.ph,frac:g.frac,bpm:60/g.p,z:zs,zi:zi.z,zst}}
 /* 1 ms loudness curve around t, used to line up two note starts exactly */
 function lv1(t0,n){const d=raw.data,sr=raw.sr,b=Math.max(1,Math.round(sr/1000)),o=new Float32Array(n);
   for(let k=0;k<n;k++){const s=Math.floor(t0*sr)+k*b;let q=0;for(let i=s;i<s+b;i++){const v=i>=0&&i<d.length?d[i]:0;q+=v*v}o[k]=Math.sqrt(q/b)}return o}
