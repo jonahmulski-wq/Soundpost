@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Soundpost</title>
+<script src="lib/lame.min.js"></script>
+<script type="module" src="./main.js"></script>
+</head>
+<body>
+<main>
+<h1>Soundpost</h1>
+<p class="sub">Record a sound bite, add effects, share your Soundpost.</p>
+<div class="msg" id="tbar" hidden style="margin:0 0 14px"><b>Test page <span id="tver"></span>.</b> Each Share or Download sends its details (phone, settings, no sound or picture) to the Soundpost test log.
+  <div class="ctl" style="margin-top:8px"><span>Your name</span><input type="text" id="tname" placeholder="Tester name" style="flex:1;min-width:0;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px"></div></div>
+
+<div class="wave"><canvas id="cv"></canvas></div>
+<div class="fxr" id="trimbox" hidden style="border-top:0;padding-top:8px"><label class="t">Trim the recording (gray parts get cut)</label>
+    <input type="hidden" id="ts" value="0"><input type="hidden" id="te" value="1000">
+    <div class="ctl" style="display:block;margin-left:0">Drag the two handles on the waveform. Hold still for a moment to zoom in and fine tune.</div>
+    <div class="ctl" style="display:flex;justify-content:space-between;gap:10px;margin-left:0"><span id="tinfo"></span><button class="btn" id="hearcut" type="button" style="padding:7px 13px;font-size:14px;white-space:nowrap">▶ hear the cut</button></div></div>
+<canvas id="mag" hidden></canvas><div id="maglab" hidden></div>
+<div class="msg" id="msg" role="status">Page loaded. Tap Rec to start.</div>
+<div class="row top">
+  <div class="grp"><span class="time" id="tm">0:00</span>
+  <button class="rec" id="rec" aria-label="Record">Rec</button></div>
+  <div class="grp"><button class="btn main" id="prev2" disabled>Preview</button>
+  <button class="btn" id="stop2" disabled>Stop</button></div>
+</div>
+<div class="file" style="text-align:left"><label>or choose an audio file: <input type="file" id="file" accept="audio/*"></label></div>
+
+<div class="sec">Clean up the sound</div>
+<div class="fx">
+  <div class="fxr"><label class="t"><input type="checkbox" id="lc"> Low cut (wind and rumble)</label></div>
+  <div class="fxr acc"><label class="t"><input type="checkbox" id="comp"> Tame harsh notes</label>
+    <div class="body"><div><div class="ctl"><span>Amount</span><input type="range" id="camt" min="0" max="100" value="50"></div>
+    <div class="ctl" style="display:block">Smooths out sudden loud notes so they don’t sound harsh.</div></div></div></div>
+  <div class="fxr acc"><label class="t"><input type="checkbox" id="volon"> <span id="vollab">Volume: 0 dB</span></label>
+    <div class="body"><div><div class="ctl"><span>Amount</span><input type="range" id="vol" min="-12" max="12" step="1" value="0"></div></div></div></div>
+</div>
+<div class="sec">Add effects</div>
+<div class="fx">
+  <div class="fxr acc"><label class="t"><input type="checkbox" id="echo"> Echo</label>
+    <div class="body"><div><div class="ctl"><span>Delay</span><input type="range" id="edelay" min="120" max="700" value="330">
+    <span>Repeats</span><input type="range" id="efb" min="10" max="75" value="40">
+    <span>Amount</span><input type="range" id="emix" min="10" max="100" value="65"></div></div></div></div>
+  <div class="fxr acc"><label class="t"><input type="checkbox" id="rev"> Reverb</label>
+    <div class="body"><div><div class="ctl"><span>Space</span><select id="room"><option value="0.8">Small room</option><option value="2" selected>Hall</option><option value="4">Cathedral</option></select>
+    <span>Amount</span><input type="range" id="revmix" min="0" max="100" value="50"></div></div></div></div>
+  <div class="fxr acc"><label class="t"><input type="checkbox" id="rep"> Repeat the clip</label>
+    <div class="body"><div><div class="ctl"><span>Times</span><select id="reps"><option>2</option><option>3</option><option>4</option></select></div>
+    <label class="ctl sub"><input type="checkbox" id="repbeat"> <span>Repeat in time – “<span class="bl"></span>” shows the beat</span></label>
+    <label class="ctl sub"><input type="checkbox" id="repkeep"> Keep my exact trim</label>
+    <div class="ctl sub note" id="repmsg" hidden></div></div></div></div>
+  <div class="fxr acc"><label class="t"><input type="checkbox" id="octon"> Octave layer</label>
+    <div class="body"><div><div class="ctl"><span>Layer</span><select id="oct"><option value="down">One octave lower</option><option value="up">One octave higher</option></select>
+    <span>Amount</span><input type="range" id="octmix" min="10" max="100" value="55"></div></div></div></div>
+  <div class="fxr acc"><label class="t"><input type="checkbox" id="wat"> Background sounds</label>
+    <div class="body"><div><div class="ctl"><select id="wsel" style="grid-column:1/-1"></select>
+    <span>Volume</span><input type="range" id="watmix" min="2" max="100" value="22"></div></div></div></div>
+</div>
+
+<div class="sec big">Share Soundpost audio or video</div>
+<div class="lab">Soundpost audio</div>
+<div class="row grid2">
+<button class="btn main" id="prev" disabled>Preview</button>
+  <button class="btn" id="stop" disabled>Stop</button>
+</div>
+<audio id="player" controls controlsList="nodownload noplaybackrate noremoteplayback" disableRemotePlayback hidden></audio>
+<div class="row grid2" style="margin-top:10px">
+  <button class="btn" id="share" disabled>Share MP3</button>
+  <button class="btn" id="dl" disabled>Download MP3</button>
+</div>
+<div class="lab" style="margin-top:22px">Soundpost video</div>
+<div class="fxr flat" id="vidbox" style="border-top:0;padding-top:0">
+  <div>
+    <div class="step">1. Choose A Photo Or Upload Your Own</div>
+    <div class="pics" id="pics"></div>
+    <div class="ctl" style="display:block"><label>Upload Photo: <input type="file" id="pimg" accept="image/*"></label></div>
+    <div class="step">2. Adjust Video Settings</div>
+    <div class="ctl"><span>Shape</span><select id="vshape"><option value="sq">Square</option><option value="tall">Tall (Stories, Reels)</option></select></div>
+    <div class="ctl"><span>Motion</span><select id="vmotion"><option value="zin" selected>Zoom in</option><option value="zout">Zoom out</option><option value="pl">Pan left</option><option value="pr">Pan right</option><option value="pu">Pan up</option><option value="pd">Pan down</option><option value="still">Still</option></select></div>
+    <div class="steps">
+      <div><div class="step">3. Make Video</div><button class="btn main" id="vmake" type="button">Make Video</button></div>
+      <div><div class="step">4. Share or Download</div><div class="vbtns"><button class="btn" id="vshare" type="button" disabled>Share Video</button><button class="btn" id="vdl" type="button" disabled>Download Video</button></div></div>
+    </div>
+    <div class="step">5. Changed a Video Setting? Tap “Make Video” again.</div>
+    <div class="msg" id="vmsg" role="status" hidden style="margin-top:10px"></div>
+    <video id="vplayer" controls playsinline hidden style="width:100%;margin-top:10px;border-radius:10px"></video>
+  </div></div>
+<div id="tbox" hidden>
+  <div class="lab" style="margin-top:22px">Test info (last Share or Download)</div>
+  <div class="msg" id="tstat" style="margin-top:10px">Nothing yet.</div>
+  <pre id="tinfo2" style="white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;max-height:220px;overflow:auto;background:rgba(127,127,127,.08);padding:10px;border-radius:8px;margin:10px 0"></pre>
+  <button class="btn" id="tcopy" type="button" disabled>Copy test info</button>
+</div>
+</main>
+<div class="rpl" id="rpl" hidden role="dialog" aria-modal="true"><div><p>Replace existing recording?</p><button class="btn" id="rplN" type="button">Cancel</button><button class="btn main" id="rplY" type="button">Replace</button><label class="rplk"><input type="checkbox" id="rplK"> Don’t ask again until I close the app</label></div></div>
+</body>
+</html>

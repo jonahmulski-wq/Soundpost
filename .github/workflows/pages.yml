@@ -1,0 +1,63 @@
+# Publishes the site to GitHub Pages.
+#  - Test page  (/Soundpost/test/): built from main on every push to main (about 1-2 minutes).
+#  - Live app   (/Soundpost/):      built from the newest whole-number version label (V7, V8, ...), so it changes only on "make a version".
+#    A label from before the code split (V7) has no package.json; its index.html and sounds/ are published as they are.
+# One-time setting: repo Settings > Pages > Source > "GitHub Actions".
+name: Publish to GitHub Pages
+on:
+  push:
+    branches: [main]
+    tags: ['V*']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0   # all labels, to find the newest version
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build the test page from main
+        run: |
+          npm ci
+          npm run build
+          mkdir -p site
+          cp -r dist site/test
+      - name: Build the live app from the newest version label
+        run: |
+          TAG=$(git tag -l 'V*' | grep -E '^V[0-9]+$' | sort -V | tail -1)
+          echo "Live app comes from $TAG"
+          git worktree add /tmp/live "$TAG"
+          cd /tmp/live
+          if [ -f package.json ]; then
+            npm ci
+            npm run build
+            cp -r dist/. "$GITHUB_WORKSPACE/site/"
+          else
+            cp index.html "$GITHUB_WORKSPACE/site/"
+            cp -r sounds "$GITHUB_WORKSPACE/site/"
+          fi
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
