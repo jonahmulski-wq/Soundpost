@@ -31,7 +31,7 @@ button,select{font:inherit;color:inherit}
 .rec.on{border-radius:18px}
 .btn{padding:11px 18px;border-radius:999px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-weight:600}
 .btn.main{background:var(--acc);color:var(--on);border-color:var(--acc)}
-.rpl{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}.rpl[hidden]{display:none}.rpl>div{background:var(--panel);color:var(--ink);border-radius:14px;padding:20px;max-width:340px;width:100%;text-align:center}.rpl p{margin:0 0 16px;font-size:16px}.rpl .btn{margin:0 5px}
+.rpl{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}.rpl[hidden]{display:none}.rpl>div{background:var(--panel);color:var(--ink);border-radius:14px;padding:20px;max-width:340px;width:100%;text-align:center}.rpl p{margin:0 0 16px;font-size:16px}.rpl .btn{margin:0 5px}.rplk{display:block;margin-top:16px;font-size:14px;color:var(--mute);cursor:pointer}.rplk input{margin-right:6px;vertical-align:middle}
 .btn:disabled{opacity:.45;cursor:default}
 :focus-visible{outline:3px solid var(--acc);outline-offset:2px}
 .time{font-variant-numeric:tabular-nums;color:var(--mute);min-width:3.2em;text-align:center}
@@ -258,7 +258,8 @@ async function startRec(){AC();
     const rb=new Blob(chunks,{type:rec.mimeType});srcInfo={src:'Recorded',type:(rec.mimeType||'').split(';')[0],kb:kb(rb.size),...micInfo};await load(await rb.arrayBuffer())};
   rec.start();t0=Date.now();$('rec').classList.add('on');$('rec').textContent='Stop';msg('Recording… tap Stop when done (up to 2 minutes).');
   tick=setInterval(()=>{const s=(Date.now()-t0)/1000;$('tm').textContent=fmt(s);if(s>=120)rec.stop()},200)}
-function askReplace(){return new Promise(r=>{const m=$('rpl'),ok=$('rplY'),no=$('rplN'),done=v=>{m.hidden=true;ok.onclick=no.onclick=null;r(v)};m.hidden=false;ok.onclick=()=>done(true);no.onclick=()=>done(false);no.focus()})}
+let rplSkip=false;
+function askReplace(){if(rplSkip)return Promise.resolve(true);return new Promise(r=>{const m=$('rpl'),ok=$('rplY'),no=$('rplN'),cb=$('rplK'),done=v=>{m.hidden=true;ok.onclick=no.onclick=null;if(v&&cb.checked)rplSkip=true;cb.checked=false;r(v)};m.hidden=false;ok.onclick=()=>done(true);no.onclick=()=>done(false);no.focus()})}
 $('rec').onclick=async()=>{stopPlay();if(rec&&rec.state==='recording'){rec.stop();return}
   if(raw&&!await askReplace())return;startRec()};
 $('file').onchange=async e=>{const f=e.target.files[0];if(f){msg('Reading '+f.name+'…');AC();srcInfo={src:'Uploaded file',type:f.type||f.name.split('.').pop(),kb:kb(f.size)};await load(await f.arrayBuffer())}};
@@ -812,6 +813,6 @@ addEventListener('resize',()=>{fitBig();if(raw&&!live)drawTrim();else draw(null)
 addEventListener('error',e=>msg('Error: '+e.message));
 draw(null);
 </script>
-<div class="rpl" id="rpl" hidden role="dialog" aria-modal="true"><div><p>Replace existing recording?</p><button class="btn" id="rplN" type="button">Cancel</button><button class="btn main" id="rplY" type="button">Replace</button></div></div>
+<div class="rpl" id="rpl" hidden role="dialog" aria-modal="true"><div><p>Replace existing recording?</p><button class="btn" id="rplN" type="button">Cancel</button><button class="btn main" id="rplY" type="button">Replace</button><label class="rplk"><input type="checkbox" id="rplK"> Don’t ask again until I close the app</label></div></div>
 </body>
 </html>
