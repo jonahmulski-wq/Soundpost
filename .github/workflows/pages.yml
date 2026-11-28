@@ -8,6 +8,8 @@ on:
   push:
     branches: [main]
     tags: ['V*']
+  release:
+    types: [published]
   workflow_dispatch:
 permissions:
   contents: read
@@ -37,6 +39,7 @@ jobs:
       - name: Build the live app from the newest version label
         run: |
           TAG=$(git tag -l 'V*' | grep -E '^V[0-9]+$' | sort -V | tail -1)
+          if [ -z "$TAG" ]; then echo "::error::No version label (V7, V8, ...) found. Publish a GitHub Release named V7 first."; exit 1; fi
           echo "Live app comes from $TAG"
           git worktree add /tmp/live "$TAG"
           cd /tmp/live
